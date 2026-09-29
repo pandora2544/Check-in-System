@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI Mockup — เว็บแอดมิน/อาจารย์</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
+    --teal:#3C6E58; --teal-dark:#294F40; --teal-bg:#E7F0EA;
+    --amber:#C68A2E; --amber-bg:#FBF1DE;
+    --brick:#B23A2E; --brick-bg:#FBEAE7;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); font-family:'IBM Plex Sans Thai', sans-serif;
+    color:var(--ink); min-height:100vh;
+  }
+  .app{ display:flex; min-height:100vh; }
+
+  /* Sidebar */
+  .sidebar{
+    width:236px; flex-shrink:0; background:var(--ink); color:var(--surface);
+    padding:22px 16px; display:flex; flex-direction:column;
+  }
+  .brand{ display:flex; align-items:center; gap:9px; padding:0 8px 22px; }
+  .brand .mark{ width:22px; height:22px; border-radius:6px; background:var(--teal); flex-shrink:0; }
+  .brand span{ font-size:14.5px; font-weight:600; }
+  .navitem{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 12px; border-radius:10px; margin-bottom:2px;
+    font-size:13.5px; color:#C9D6CF; cursor:pointer; border:none; background:none;
+    width:100%; text-align:right; flex-direction:row-reverse; justify-content:flex-end;
+    font-family:inherit;
+  }
+  .navitem:hover{ background:rgba(255,255,255,0.06); color:#fff; }
+  .navitem.active{ background:var(--teal); color:#fff; }
+  .navitem .tag{
+    margin-right:auto; font-size:10px; padding:2px 6px; border-radius:5px;
+    background:rgba(255,255,255,0.12); color:#C9D6CF;
+  }
+  .navitem.active .tag{ background:rgba(255,255,255,0.2); color:#fff; }
+  .sidebar-foot{ margin-top:auto; padding:12px; font-size:11.5px; color:#8CA79B; }
+
+  /* Main */
+  .main{ flex:1; padding:28px 36px 60px; max-width:1180px; }
+  .topbar{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:26px; }
+  .topbar h1{ font-size:22px; font-weight:600; margin:0 0 4px; letter-spacing:-0.01em; }
+  .topbar p.date{ font-size:13px; color:var(--ink-muted); margin:0; }
+  .userchip{ display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--line); padding:7px 12px; border-radius:999px; font-size:13px; }
+  .userchip .avatar{ width:22px; height:22px; border-radius:50%; background:var(--teal-bg); color:var(--teal-dark); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+
+  /* Cards / grid */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:26px; }
+  .stat{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .stat .num{ font-family:'IBM Plex Mono',monospace; font-size:26px; font-weight:600; }
+  .stat .lbl{ font-size:12.5px; color:var(--ink-muted); margin-top:4px; }
+  .stat.teal .num{ color:var(--teal-dark); }
+  .stat.amber .num{ color:#7A5A1E; }
+  .stat.brick .num{ color:#7C2A21; }
+
+  h2.section-title{ font-size:15px; font-weight:600; margin:0 0 12px; }
+
+  .session-list{ display:flex; flex-direction:column; gap:10px; }
+  .session-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:14px 18px; display:flex; align-items:center; gap:16px; cursor:pointer;
+    transition:border-color .15s;
+  }
+  .session-card:hover{ border-color:var(--teal); }
+  .session-card .time{ font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink-muted); width:96px; flex-shrink:0; }
+  .session-card .info{ flex:1; }
+  .session-card .code{ font-size:13px; color:var(--teal-dark); font-weight:600; }
+  .session-card .room{ font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
+
+  .pill{ display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:600; }
+  .pill.live{ background:var(--teal-bg); color:var(--teal-dark); }
+  .pill.upcoming{ background:var(--line); color:var(--ink-muted); }
+  .pill.done{ background:var(--line); color:var(--ink-muted); opacity:.7; }
+  .pill.pending{ background:var(--amber-bg); color:#7A5A1E; }
+  .pill.approved{ background:var(--teal-bg); color:var(--teal-dark); }
+  .pill.rejected{ background:var(--brick-bg); color:#7C2A21; }
+  .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .dot.blink{ animation:blink 1.4s ease-in-out infinite; }
+  @keyframes blink{ 50%{ opacity:.3; } }
+
+  /* Table */
+  table{ width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  thead th{ text-align:right; font-size:12px; color:var(--ink-muted); font-weight:600; padding:12px 16px; border-bottom:1px solid var(--line); background:#F4F6F4; }
+  thead th:first-child{ text-align:right; }
+  tbody td{ padding:12px 16px; font-size:13.5px; border-bottom:1px solid var(--line); text-align:right; }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:#F7F9F7; }
+  .name-cell{ text-align:right; }
+
+  .btn{ font-family:inherit; font-size:13px; font-weight:600; padding:8px 15px; border-radius:9px; border:none; cursor:pointer; }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-primary:hover{ background:var(--teal-dark); }
+  .btn-ghost{ background:transparent; border:1.3px solid var(--line); color:var(--ink); }
+  .btn-ghost:hover{ border-color:var(--teal); color:var(--teal-dark); }
+  .btn-reject{ background:transparent; border:1.3px solid var(--brick); color:var(--brick); }
+  .btn-sm{ padding:5px 11px; font-size:12px; border-radius:7px; }
+
+  .toolbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:10px; }
+  .tabs{ display:flex; gap:6px; }
+  .tab{ font-family:inherit; font-size:13px; padding:8px 14px; border-radius:9px; border:none; background:none; color:var(--ink-muted); cursor:pointer; }
+  .tab.active{ background:var(--ink); color:#fff; }
+
+  .select, .input{
+    font-family:inherit; font-size:13px; padding:9px 12px; border-radius:9px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink);
+  }
+
+  .booking-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px 18px; display:flex; align-items:center; gap:16px; margin-bottom:10px; }
+  .booking-card .meta{ flex:1; }
+  .booking-card .room{ font-size:14px; font-weight:600; }
+  .booking-card .time{ font-size:12.5px; color:var(--ink-muted); margin-top:3px; }
+  .booking-card .who{ font-size:12px; color:var(--ink-muted); margin-top:3px; }
+  .booking-actions{ display:flex; gap:8px; }
+
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .form-row label{ font-size:12.5px; color:var(--ink-muted); font-weight:600; }
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+  .radius-preview{ display:flex; align-items:center; gap:18px; margin-top:8px; }
+  .radius-preview svg{ flex-shrink:0; }
+
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:var(--surface); padding:12px 20px; border-radius:11px;
+    font-size:13.5px; opacity:0; pointer-events:none; transition:all .25s ease;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .subnote{ font-size:12px; color:var(--ink-muted); margin-top:14px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="brand"><div class="mark"></div><span>แล็บเช็คอิน · แอดมิน</span></div>
+    <div id="nav"></div>
+    <div class="sidebar-foot">เวอร์ชันตัวอย่าง UI · ไม่ใช่ระบบจริง</div>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <div><h1 id="pageTitle"></h1><p class="date" id="pageDate"></p></div>
+      <div class="userchip"><div class="avatar">สช</div>อ.สมชาย ใจดี</div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const pages = {
+  dashboard: { title:'แดชบอร์ด', tag:null },
+  live: { title:'เช็คชื่อสด', tag:null },
+  booking: { title:'จองห้อง', tag:null },
+  locations: { title:'ตั้งค่าห้อง', tag:'แอดมิน' },
+  reports: { title:'รายงาน', tag:'แอดมิน' },
+};
+
+const nav = document.getElementById('nav');
+Object.entries(pages).forEach(([key,val])=>{
+  const b = document.createElement('button');
+  b.className='navitem'; b.dataset.key=key;
+  b.innerHTML = (val.tag ? `<span class="tag">${val.tag}</span>` : '') + `<span>${val.title}</span>`;
+  b.onclick=()=>render(key);
+  nav.appendChild(b);
+});
+
+function setActive(key){
+  [...nav.children].forEach(b=>b.classList.toggle('active', b.dataset.key===key));
+  document.getElementById('pageTitle').textContent = pages[key].title;
+  document.getElementById('pageDate').textContent = 'วันศุกร์ที่ 12 กันยายน 2569';
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function qrPattern(){
+  // placeholder QR-like checkerboard, not a real scannable code
+  let cells = '';
+  const seed = [1,0,1,1,0,1,0,0,1,1,0,1,1,0,0,1,0,1,1,0,1,0,0,1,1,1,0,1,0,1,1,0,0,1,1,0,1,0,1,1,0,0,1,1,0,1,1,0,1,0,0,1,0,1,1,1,0,0,1,1,0,1,0,1];
+  const n = 8;
+  seed.forEach((v,i)=>{
+    const x = (i%n)*14, y = Math.floor(i/n)*14;
+    if(v) cells += `<rect x="${x}" y="${y}" width="14" height="14" fill="#173029"/>`;
+  });
+  return `<svg width="112" height="112" viewBox="0 0 112 112">${cells}
+    <rect x="0" y="0" width="28" height="28" fill="none" stroke="#173029" stroke-width="4"/>
+    <rect x="84" y="0" width="28" height="28" fill="none" stroke="#173029" stroke-width="4"/>
+    <rect x="0" y="84" width="28" height="28" fill="none" stroke="#173029" stroke-width="4"/>
+  </svg>`;
+}
+
+function showQR(roomLabel){
+  document.getElementById('qrPanel').innerHTML = `
+    <div class="card" style="display:flex; gap:20px; align-items:center; margin-bottom:22px;">
+      <div style="background:#fff; padding:10px; border-radius:10px; border:1px solid var(--line);">${qrPattern()}</div>
+      <div>
+        <div style="font-size:14px; font-weight:600; margin-bottom:4px;">QR ประจำ ${roomLabel}</div>
+        <div style="font-size:12.5px; color:var(--ink-muted); line-height:1.6;">พิมพ์แล้วติดไว้หน้าห้องได้เลย ไม่ต้องเปลี่ยนทุกคาบ — สแกนแล้วเปิดแอปตรงเข้าห้องนี้ทันที (ยังต้องตรวจตำแหน่ง+สแกนหน้าตามปกติ)</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="toast('ดาวน์โหลดไฟล์ QR แล้ว')">ดาวน์โหลด</button>
+      </div>
+    </div>`;
+}
+
+function render(key){
+  setActive(key);
+  const el = document.getElementById('content');
+  if(key==='dashboard') el.innerHTML = dashboardHTML();
+  if(key==='live') el.innerHTML = liveHTML();
+  if(key==='booking'){ el.innerHTML = bookingHTML('pending'); wireBookingTabs(); }
+  if(key==='locations') el.innerHTML = locationsHTML();
+  if(key==='reports') el.innerHTML = reportsHTML();
+  if(key==='locations') wireRadiusSlider();
+}
+
+function dashboardHTML(){
+  return `
+    <div class="grid">
+      <div class="stat teal"><div class="num">4</div><div class="lbl">คาบวันนี้</div></div>
+      <div class="stat amber"><div class="num">2</div><div class="lbl">คำขอจองห้องรออนุมัติ</div></div>
+      <div class="stat teal"><div class="num">87%</div><div class="lbl">อัตราเข้าเรียนเฉลี่ยสัปดาห์นี้</div></div>
+      <div class="stat brick"><div class="num">3</div><div class="lbl">นักศึกษาขาดเกิน 20% เทอมนี้</div></div>
+    </div>
+    <h2 class="section-title">คาบเรียนวันนี้</h2>
+    <div class="session-list">
+      <div class="session-card" onclick="render('live')">
+        <div class="time">9:00–12:00</div>
+        <div class="info"><div class="code">CPH64-242 · LAB1 บทนำปฏิบัติการ</div><div class="room">ห้อง 134 อาคาร B8</div></div>
+        <span class="pill live"><span class="dot blink"></span>กำลังเรียน</span>
+      </div>
+      <div class="session-card">
+        <div class="time">13:00–16:00</div>
+        <div class="info"><div class="code">CPH64-243 · LAB2 เทคนิคการวิเคราะห์</div><div class="room">ห้อง 201 อาคาร B8</div></div>
+        <span class="pill upcoming">ยังไม่เริ่ม</span>
+      </div>
+      <div class="session-card">
+        <div class="time">8:00–11:00</div>
+        <div class="info"><div class="code">CPH64-244 · LAB1 ความปลอดภัยในห้องแล็บ</div><div class="room">ห้อง 305 อาคาร A2</div></div>
+        <span class="pill done">จบแล้ว</span>
+      </div>
+    </div>`;
+}
+
+function liveHTML(){
+  const students = [
+    ['กมลชนก ศรีสุข','65010123','9:04 น.','ปกติ',null],
+    ['ธนกร วงศ์ไพศาล','65010145','9:06 น.','ปกติ',null],
+    ['ปวีณ์นุช ทองดี','65010167','9:19 น.','สาย',null],
+    ['ศุภกร แดงสด','65010189','9:22 น.','สาย',null],
+    ['อริสา บุญมาก','—','—','ขาด','absent'],
+  ];
+  const rows = students.map(s=>`
+    <tr>
+      <td class="name-cell">${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td>
+      <td><span class="pill ${s[3]==='ปกติ'?'approved':s[3]==='สาย'?'pending':'rejected'}">${s[3]}</span></td>
+      <td>${s[4]==='absent' ? '<button class="btn btn-ghost btn-sm" onclick="toast(\'บันทึกเช็คชื่อมือแล้ว\')">เช็คชื่อมือ</button>' : ''}</td>
+    </tr>`).join('');
+  return `
+    <div class="card" style="margin-bottom:18px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-size:13px;color:var(--ink-muted);margin-bottom:2px;">CPH64-242 · LAB1 บทนำปฏิบัติการ</div>
+        <div style="font-size:16px;font-weight:600;">ห้อง 134 อาคาร B8 · 9:00–12:00 น.</div>
+      </div>
+      <span class="pill live"><span class="dot blink"></span>กำลังเรียน · อัปเดตล่าสุด 9:31 น.</span>
+    </div>
+    <div class="grid">
+      <div class="stat teal"><div class="num">10</div><div class="lbl">เข้าเรียนปกติ</div></div>
+      <div class="stat amber"><div class="num">5</div><div class="lbl">เข้าเรียนสาย</div></div>
+      <div class="stat brick"><div class="num">2</div><div class="lbl">ขาดเรียน</div></div>
+    </div>
+    <table>
+      <thead><tr><th>ชื่อ-นามสกุล</th><th>รหัสนักศึกษา</th><th>เวลาเช็คชื่อ</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function bookingHTML(activeTab){
+  const pending = `
+    <div class="booking-card">
+      <span class="pill pending">ตารางปกติ</span>
+      <div class="meta"><div class="room">ห้อง 201 อาคาร B8 · จ. 9:00–12:00 น.</div><div class="time">รายสัปดาห์ ถึง 15 ธ.ค. 2569</div><div class="who">ขอโดย อ.สมชาย ใจดี</div></div>
+      <div class="booking-actions"><button class="btn btn-primary btn-sm" onclick="toast('อนุมัติคำขอแล้ว')">อนุมัติ</button><button class="btn btn-reject btn-sm" onclick="toast('ปฏิเสธคำขอแล้ว')">ปฏิเสธ</button></div>
+    </div>
+    <div class="booking-card">
+      <span class="pill pending">ซ่อม/นัดพิเศษ</span>
+      <div class="meta"><div class="room">ห้อง 134 อาคาร B8 · พฤ. 18 ก.ย. 13:00–15:00 น.</div><div class="time">ครั้งเดียว</div><div class="who">ขอโดย อ.วิภาวี ศรีสมบัติ</div></div>
+      <div class="booking-actions"><button class="btn btn-primary btn-sm" onclick="toast('อนุมัติคำขอแล้ว')">อนุมัติ</button><button class="btn btn-reject btn-sm" onclick="toast('ปฏิเสธคำขอแล้ว')">ปฏิเสธ</button></div>
+    </div>`;
+  const approved = `
+    <div class="booking-card">
+      <span class="pill approved">ตารางปกติ</span>
+      <div class="meta"><div class="room">ห้อง 134 อาคาร B8 · ศ. 9:00–12:00 น.</div><div class="time">รายสัปดาห์ ถึง 15 ธ.ค. 2569</div><div class="who">ขอโดย อ.สมชาย ใจดี</div></div>
+    </div>`;
+  const rejected = `
+    <div class="booking-card">
+      <span class="pill rejected">ซ่อม/นัดพิเศษ</span>
+      <div class="meta"><div class="room">ห้อง 305 อาคาร A2 · อ. 22 ก.ย. 13:00–15:00 น.</div><div class="time">ครั้งเดียว — เหตุผล: ห้องชนกับคาบอื่น</div><div class="who">ขอโดย อ.ปิยะ รุ่งเรือง</div></div>
+    </div>`;
+  const map = { pending, approved, rejected };
+  return `
+    <div class="toolbar">
+      <div class="tabs">
+        <button class="tab ${activeTab==='pending'?'active':''}" data-tab="pending">รออนุมัติ (2)</button>
+        <button class="tab ${activeTab==='approved'?'active':''}" data-tab="approved">อนุมัติแล้ว</button>
+        <button class="tab ${activeTab==='rejected'?'active':''}" data-tab="rejected">ปฏิเสธ</button>
+      </div>
+      <button class="btn btn-primary" onclick="toast('เปิดฟอร์มจองห้องใหม่')">+ จองห้องใหม่</button>
+    </div>
+    <div id="bookingList">${map[activeTab]}</div>`;
+}
+
+function wireBookingTabs(){
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.onclick = ()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('bookingList').innerHTML = bookingHTML(t.dataset.tab).match(/<div id="bookingList">([\s\S]*)<\/div>$/)[1];
+    };
+  });
+}
+
+function locationsHTML(){
+  return `
+    <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+      <button class="btn btn-primary" onclick="toast('เปิดฟอร์มเพิ่มห้องใหม่')">+ เพิ่มห้องใหม่</button>
+    </div>
+    <table style="margin-bottom:22px;">
+      <thead><tr><th>ชื่อห้อง</th><th>ตึก</th><th>พิกัด</th><th>รัศมี</th><th>QR ประจำห้อง</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">ห้อง 134</td><td>B8</td><td>13.7563, 100.5018</td><td>30 ม.</td><td><button class="btn btn-ghost btn-sm" onclick="showQR('ห้อง 134 อาคาร B8')">ดู QR</button></td><td><button class="btn btn-ghost btn-sm">แก้ไข</button></td></tr>
+        <tr><td class="name-cell">ห้อง 201</td><td>B8</td><td>13.7565, 100.5020</td><td>25 ม.</td><td><button class="btn btn-ghost btn-sm" onclick="showQR('ห้อง 201 อาคาร B8')">ดู QR</button></td><td><button class="btn btn-ghost btn-sm">แก้ไข</button></td></tr>
+        <tr><td class="name-cell">ห้อง 305</td><td>A2</td><td>13.7590, 100.4990</td><td>20 ม.</td><td><button class="btn btn-ghost btn-sm" onclick="showQR('ห้อง 305 อาคาร A2')">ดู QR</button></td><td><button class="btn btn-ghost btn-sm">แก้ไข</button></td></tr>
+      </tbody>
+    </table>
+    <div id="qrPanel"></div>
+    <h2 class="section-title">เพิ่ม/แก้ไขห้อง</h2>
+    <div class="card">
+      <div class="form-grid">
+        <div class="form-row"><label>ชื่อห้อง</label><input class="input" value="ห้อง 134"></div>
+        <div class="form-row"><label>อาคาร</label><input class="input" value="B8"></div>
+        <div class="form-row"><label>Latitude</label><input class="input" value="13.7563"></div>
+        <div class="form-row"><label>Longitude</label><input class="input" value="100.5018"></div>
+      </div>
+      <div class="form-row">
+        <label>รัศมีโซนสแกน: <span id="radiusVal">30</span> เมตร</label>
+        <input type="range" id="radiusSlider" min="10" max="100" value="30" style="accent-color:#3C6E58;">
+      </div>
+      <div class="radius-preview">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="50" fill="#E7F0EA" stroke="#3C6E58" stroke-width="1.5" id="radiusCircle"/>
+          <circle cx="60" cy="60" r="4" fill="#3C6E58"/>
+        </svg>
+        <p class="subnote" style="margin-top:0;">ตัวอย่างขนาดรัศมีเทียบกับจุดปักหมุด (ไม่ใช่มาตราส่วนจริง)</p>
+      </div>
+      <div style="margin-top:16px;"><button class="btn btn-primary" onclick="toast('บันทึกห้องแล้ว')">บันทึก</button></div>
+    </div>`;
+}
+
+function wireRadiusSlider(){
+  const slider = document.getElementById('radiusSlider');
+  if(!slider) return;
+  slider.oninput = ()=>{
+    document.getElementById('radiusVal').textContent = slider.value;
+    const r = 15 + (slider.value/100)*45;
+    document.getElementById('radiusCircle').setAttribute('r', r);
+  };
+}
+
+function reportsHTML(){
+  return `
+    <div class="toolbar">
+      <div style="display:flex; gap:10px;">
+        <select class="select"><option>CPH64-242 · LAB1</option><option>CPH64-243 · LAB2</option></select>
+        <select class="select"><option>เทอม 1/2569</option><option>เทอม 2/2568</option></select>
+      </div>
+      <button class="btn btn-ghost">ส่งออก Excel</button>
+    </div>
+    <div class="grid">
+      <div class="stat teal"><div class="num">88%</div><div class="lbl">อัตราเข้าเรียนเฉลี่ย</div></div>
+      <div class="stat teal"><div class="num">12</div><div class="lbl">คาบทั้งหมดเทอมนี้</div></div>
+      <div class="stat brick"><div class="num">2</div><div class="lbl">นักศึกษาขาดเกิน 20%</div></div>
+    </div>
+    <table style="margin-bottom:26px;">
+      <thead><tr><th>ชื่อ-นามสกุล</th><th>% เข้าเรียน</th><th>ปกติ</th><th>สาย</th><th>ขาด</th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">กมลชนก ศรีสุข</td><td>100%</td><td>12</td><td>0</td><td>0</td></tr>
+        <tr><td class="name-cell">ธนกร วงศ์ไพศาล</td><td>92%</td><td>10</td><td>1</td><td>1</td></tr>
+        <tr><td class="name-cell">อริสา บุญมาก</td><td>67%</td><td>6</td><td>2</td><td>4</td></tr>
+      </tbody>
+    </table>
+    <h2 class="section-title">รายชื่อนักศึกษาประจำปี</h2>
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <div style="font-size:13.5px; font-weight:600; margin-bottom:2px;">สร้างไฟล์รายชื่อแยกตามกลุ่มเรียน</div>
+        <div style="font-size:12.5px; color:var(--ink-muted);">อัปโหลดเข้า Google Drive Pro โดยอัตโนมัติ</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select class="select"><option>ปีการศึกษา 2569</option><option>ปีการศึกษา 2568</option></select>
+        <button class="btn btn-primary" onclick="toast('กำลังสร้างไฟล์และอัปโหลดขึ้น Google Drive...')">สร้าง/ดาวน์โหลด</button>
+      </div>
+    </div>`;
+}
+
+render('dashboard');
+</script>
+</body>
+</html>

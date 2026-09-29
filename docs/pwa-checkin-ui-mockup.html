@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI Mockup — ระบบเช็คชื่อเข้าเรียนแล็บ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EFF2EF;
+    --surface:#FBFCFA;
+    --ink:#173029;
+    --ink-muted:#587067;
+    --line:#D8DED9;
+    --teal:#3C6E58;
+    --teal-dark:#294F40;
+    --teal-bg:#E7F0EA;
+    --amber:#C68A2E;
+    --amber-bg:#FBF1DE;
+    --brick:#B23A2E;
+    --brick-bg:#FBEAE7;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    font-family:'IBM Plex Sans Thai', sans-serif;
+    color:var(--ink);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:40px 16px 80px;
+  }
+  .intro{
+    max-width:520px;
+    text-align:center;
+    margin-bottom:28px;
+  }
+  .intro h1{
+    font-size:20px;
+    font-weight:600;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  .intro p{
+    font-size:14px;
+    color:var(--ink-muted);
+    line-height:1.6;
+    margin:0;
+  }
+  .nav-picker{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:center;
+    max-width:640px;
+    margin-bottom:32px;
+  }
+  .nav-picker button{
+    font-family:inherit;
+    font-size:12.5px;
+    padding:7px 13px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink-muted);
+    cursor:pointer;
+    transition:border-color .15s ease, color .15s ease;
+  }
+  .nav-picker button:hover{ border-color:var(--teal); color:var(--teal-dark); }
+  .nav-picker button.active{
+    background:var(--ink);
+    border-color:var(--ink);
+    color:var(--surface);
+  }
+  .nav-picker button:focus-visible, button:focus-visible{
+    outline:2px solid var(--teal);
+    outline-offset:2px;
+  }
+
+  /* Phone frame */
+  .phone{
+    width:360px;
+    max-width:92vw;
+    height:740px;
+    max-height:82vh;
+    background:var(--ink);
+    border-radius:44px;
+    padding:14px;
+    box-shadow:0 24px 48px -20px rgba(23,48,41,0.35);
+  }
+  .screen{
+    position:relative;
+    width:100%;
+    height:100%;
+    background:var(--surface);
+    border-radius:32px;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+  }
+  .statusbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:14px 22px 6px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    color:var(--ink);
+    flex-shrink:0;
+  }
+  .statusbar .dots{ display:flex; gap:4px; align-items:center; }
+  .statusbar .bar{ width:3px; background:var(--ink); border-radius:1px; }
+  .statusbar .b1{height:5px;} .statusbar .b2{height:7px;} .statusbar .b3{height:9px;} .statusbar .b4{height:11px;}
+
+  .app-header{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 22px 4px;
+    flex-shrink:0;
+  }
+  .app-header .mark{
+    width:20px; height:20px;
+    border-radius:6px;
+    background:var(--teal);
+    flex-shrink:0;
+  }
+  .app-header span{
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-muted);
+  }
+
+  .content{
+    flex:1;
+    padding:14px 24px 26px;
+    display:flex;
+    flex-direction:column;
+    overflow-y:auto;
+  }
+
+  /* Step indicator */
+  .steps{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin:6px 0 22px;
+  }
+  .steps .seg{ flex:1; height:2px; background:var(--line); }
+  .steps .seg.done{ background:var(--teal); }
+  .steps .dot{
+    width:10px; height:10px;
+    border-radius:50%;
+    border:2px solid var(--line);
+    background:var(--surface);
+    flex-shrink:0;
+  }
+  .steps .dot.done{ background:var(--teal); border-color:var(--teal); }
+  .steps .dot.active{ border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-bg); }
+  .steps .dot.warn{ border-color:var(--amber); box-shadow:0 0 0 3px var(--amber-bg); }
+  .steps .dot.fail{ border-color:var(--brick); box-shadow:0 0 0 3px var(--brick-bg); }
+
+  h2.headline{
+    font-size:22px;
+    font-weight:600;
+    line-height:1.35;
+    margin:0 0 8px;
+    letter-spacing:-0.01em;
+  }
+  p.sub{
+    font-size:14px;
+    color:var(--ink-muted);
+    line-height:1.6;
+    margin:0 0 20px;
+  }
+
+  .card{
+    background:var(--teal-bg);
+    border-radius:16px;
+    padding:16px 18px;
+    margin-bottom:16px;
+  }
+  .card .code{ font-size:13px; color:var(--teal-dark); font-weight:600; margin-bottom:4px; }
+  .card .title{ font-size:16px; font-weight:600; margin-bottom:10px; }
+  .card .row{ display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink); margin-top:6px; }
+  .card .row svg{ flex-shrink:0; }
+
+  .banner{
+    display:flex; align-items:center; gap:8px;
+    border-radius:12px;
+    padding:10px 14px;
+    font-size:13px;
+    margin-bottom:18px;
+  }
+  .banner.amber{ background:var(--amber-bg); color:#7A5A1E; }
+  .banner.brick{ background:var(--brick-bg); color:#7C2A21; }
+  .banner.teal{ background:var(--teal-bg); color:var(--teal-dark); }
+
+  .spacer{ flex:1; }
+
+  .btn{
+    display:block;
+    width:100%;
+    font-family:inherit;
+    font-size:15.5px;
+    font-weight:600;
+    padding:15px 18px;
+    border-radius:13px;
+    border:none;
+    cursor:pointer;
+    text-align:center;
+  }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-primary:hover{ background:var(--teal-dark); }
+  .btn-ghost{
+    background:transparent;
+    color:var(--teal-dark);
+    border:1.5px solid var(--line);
+    margin-top:10px;
+  }
+  .btn-ghost:hover{ border-color:var(--teal); }
+
+  /* Visuals */
+  .visual{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:14px 0 26px;
+  }
+
+  .pulse-ring{
+    position:relative;
+    width:150px; height:150px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pulse-ring .core{
+    width:64px; height:64px;
+    border-radius:50%;
+    background:var(--teal);
+    display:flex; align-items:center; justify-content:center;
+    z-index:2;
+  }
+  .pulse-ring .ring{
+    position:absolute;
+    border-radius:50%;
+    border:2px solid var(--teal);
+    opacity:0;
+    animation:ripple 2.2s ease-out infinite;
+  }
+  .pulse-ring .ring.r2{ animation-delay:0.7s; }
+  .pulse-ring .ring.r3{ animation-delay:1.4s; }
+  @keyframes ripple{
+    0%{ width:64px; height:64px; opacity:.55; }
+    100%{ width:150px; height:150px; opacity:0; }
+  }
+
+  .fail-badge{
+    width:64px; height:64px;
+    border-radius:50%;
+    background:var(--brick-bg);
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  .scan-frame{
+    position:relative;
+    width:170px; height:170px;
+    border-radius:24px;
+    background:var(--teal-bg);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .scan-frame .corner{
+    position:absolute;
+    width:22px; height:22px;
+    border:3px solid var(--teal);
+  }
+  .scan-frame .tl{ top:-3px; left:-3px; border-right:none; border-bottom:none; border-radius:10px 0 0 0;}
+  .scan-frame .tr{ top:-3px; right:-3px; border-left:none; border-bottom:none; border-radius:0 10px 0 0;}
+  .scan-frame .bl{ bottom:-3px; left:-3px; border-right:none; border-top:none; border-radius:0 0 0 10px;}
+  .scan-frame .br{ bottom:-3px; right:-3px; border-left:none; border-top:none; border-radius:0 0 10px 0;}
+  .scan-frame .scanline{
+    position:absolute;
+    left:10px; right:10px;
+    height:2px;
+    background:var(--teal);
+    animation:scan 1.6s ease-in-out infinite;
+  }
+  @keyframes scan{
+    0%,100%{ top:20px; opacity:.9; }
+    50%{ top:150px; opacity:.4; }
+  }
+
+  .success-badge{
+    width:76px; height:76px;
+    border-radius:50%;
+    background:var(--teal);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .fail-badge svg, .success-badge svg{ width:34px; height:34px; }
+
+  .ring-timer{
+    position:relative;
+    width:180px; height:180px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ring-timer svg{ transform:rotate(-90deg); }
+  .ring-timer .bg{ fill:none; stroke:var(--line); stroke-width:10; }
+  .ring-timer .fg{ fill:none; stroke:var(--teal); stroke-width:10; stroke-linecap:round; transition:stroke-dashoffset 1s linear; }
+  .ring-timer .label{
+    position:absolute;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  .ring-timer .time{ font-family:'IBM Plex Mono', monospace; font-size:30px; font-weight:600; }
+  .ring-timer .unit{ font-size:12px; color:var(--ink-muted); margin-top:2px; }
+
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 12px;
+    border-radius:999px;
+    font-size:12.5px;
+    font-weight:600;
+  }
+  .pill.ontime{ background:var(--teal-bg); color:var(--teal-dark); }
+  .pill.late{ background:var(--amber-bg); color:#7A5A1E; }
+  .pill-dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+  .meta-row{
+    display:flex; justify-content:space-between;
+    font-size:13px; padding:10px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .meta-row span:first-child{ color:var(--ink-muted); }
+  .meta-row span:last-child{ font-weight:600; }
+
+  .ping-list{ display:flex; gap:6px; margin-top:14px; }
+  .ping-list .tick{
+    flex:1; height:6px; border-radius:4px; background:var(--line);
+  }
+  .ping-list .tick.ok{ background:var(--teal); }
+
+  .demo-note{
+    font-size:11.5px; color:var(--ink-muted);
+    text-align:center; margin-top:10px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .pulse-ring .ring, .scan-frame .scanline{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="intro">
+    <h1>ระบบเช็คชื่อเข้าเรียนแล็บ — ตัวอย่างหน้าจอ (PWA)</h1>
+    <p>จำลองเป็นเฟรมมือถือเพราะนักศึกษาใช้งานผ่านมือถือเป็นหลัก เริ่มจากขั้นตอนแรกที่เปิดแอปครั้งแรก (ยินยอม → ลงทะเบียนใบหน้า → เปิดแจ้งเตือน) กดปุ่มในจอเพื่อไล่ตาม flow จริง หรือใช้แถบด้านล่างเพื่อดูแต่ละสถานะโดยตรง</p>
+  </div>
+
+  <div class="nav-picker" id="navPicker"></div>
+
+  <div class="phone">
+    <div class="screen">
+      <div class="statusbar">
+        <span id="clock">9:07</span>
+        <div class="dots">
+          <div class="bar b1"></div><div class="bar b2"></div><div class="bar b3"></div><div class="bar b4"></div>
+        </div>
+      </div>
+      <div class="app-header"><div class="mark"></div><span>แล็บเช็คอิน</span></div>
+      <div class="content" id="screenContent"></div>
+    </div>
+  </div>
+
+<script>
+const screens = {
+  consent: { label: 'ยินยอมใช้ข้อมูล', step: null },
+  enroll: { label: 'ลงทะเบียนใบหน้า', step: null },
+  setup: { label: 'เปิดการแจ้งเตือน', step: null },
+  home: { label: 'หน้าหลัก', step: null },
+  checking: { label: 'ตรวจตำแหน่ง', step: 0 },
+  rejectLocation: { label: 'ตำแหน่งไม่ผ่าน', step: 0 },
+  scanning: { label: 'สแกนหน้า', step: 1 },
+  rejectFace: { label: 'ใบหน้าไม่ตรง', step: 1 },
+  success: { label: 'สำเร็จ', step: 2 },
+};
+
+const nav = document.getElementById('navPicker');
+Object.entries(screens).forEach(([key, val]) => {
+  const b = document.createElement('button');
+  b.textContent = val.label;
+  b.onclick = () => render(key);
+  b.dataset.key = key;
+  nav.appendChild(b);
+});
+
+function setActiveNav(key){
+  [...nav.children].forEach(b => b.classList.toggle('active', b.dataset.key === key));
+}
+
+function stepIndicator(activeIndex, state){
+  // state: 'active' | 'done' | 'warn' | 'fail'  applies to activeIndex; earlier indices are done
+  const labelsCount = 3;
+  let html = '<div class="steps">';
+  for(let i=0;i<labelsCount;i++){
+    if(i>0) html += `<div class="seg ${i<=activeIndex ? 'done':''}"></div>`;
+    let cls = 'dot';
+    if(i < activeIndex) cls += ' done';
+    else if(i === activeIndex) cls += ' ' + (state === 'fail' ? 'fail' : state === 'warn' ? 'warn' : state === 'done' ? 'done' : 'active');
+    html += `<div class="${cls}"></div>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+const pinIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-7.58 7-13A7 7 0 0 0 5 9c0 5.42 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>`;
+const clockIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
+const checkIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>`;
+const xIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="#B23A2E" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+const faceIcon = `<svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#3C6E58" stroke-width="1.6"><circle cx="12" cy="9" r="4.2"/><path d="M5 20c1.2-3.2 4-5 7-5s5.8 1.8 7 5"/></svg>`;
+function checkIconSmall(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3C6E58" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M5 13l4 4L19 7"/></svg>`; }
+
+function courseCard(){
+  return `
+    <div class="card">
+      <div class="code">CPH64-242 · LAB1</div>
+      <div class="title">บทนำปฏิบัติการ</div>
+      <div class="row">${pinIcon}<span>ห้อง 134 อาคาร B8</span></div>
+      <div class="row">${clockIcon}<span>9:00–12:00 น.</span></div>
+    </div>`;
+}
+
+function render(key){
+  setActiveNav(key);
+  const el = document.getElementById('screenContent');
+  const s = screens[key];
+  let html = '';
+
+  const onboarding = ['consent','enroll','setup','home'];
+  if(!onboarding.includes(key)) html += stepIndicator(s.step,
+    key==='rejectLocation'||key==='rejectFace' ? 'fail' :
+    key==='success' ? 'done' : 'active');
+
+  if(key === 'consent'){
+    html += `<h2 class="headline">ก่อนเริ่มใช้งาน</h2>
+      <p class="sub">แอปนี้ใช้ข้อมูลใบหน้าและตำแหน่งเพื่อเช็คชื่อเข้าเรียนเท่านั้น</p>
+      <div class="card" style="background:var(--surface); border:1px solid var(--line);">
+        <div class="row" style="margin-top:0;">${checkIconSmall()}<span>เก็บเฉพาะรหัสใบหน้า (embedding) ไม่เก็บภาพถ่าย</span></div>
+        <div class="row">${checkIconSmall()}<span>ใช้ตำแหน่ง GPS เฉพาะช่วงเวลาเรียนเท่านั้น</span></div>
+        <div class="row">${checkIconSmall()}<span>ลบข้อมูลได้ทันทีเมื่อพ้นสภาพนักศึกษา</span></div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="render('enroll')">ยอมรับและดำเนินการต่อ</button>`;
+  }
+
+  else if(key === 'enroll'){
+    html += `<h2 class="headline">ลงทะเบียนใบหน้า</h2>
+      <p class="sub">จัดใบหน้าให้อยู่ในกรอบ แล้วมองตรงกล้อง (ทำครั้งเดียว)</p>
+      <div class="visual"><div class="scan-frame">
+        <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+        <div class="scanline"></div>
+        ${faceIcon}
+      </div></div>
+      <div class="spacer"></div>
+      <p class="demo-note">กำลังบันทึกข้อมูลใบหน้า…</p>`;
+    setTimeout(() => { if(document.querySelector('.nav-picker .active').dataset.key==='enroll') render('setup'); }, 2000);
+  }
+
+  else if(key === 'setup'){
+    html += `<h2 class="headline">เปิดการแจ้งเตือน</h2>
+      <p class="sub">รับการแจ้งเตือนก่อนถึงคาบเรียน 10 นาที จะได้ไม่พลาดเช็คชื่อ</p>
+      <div class="banner amber">สำหรับ iPhone: กด "แชร์" แล้วเลือก "เพิ่มไปยังหน้าจอโฮม" ก่อน จึงจะรับการแจ้งเตือนได้</div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="render('home')">เปิดการแจ้งเตือน</button>
+      <button class="btn btn-ghost" onclick="render('home')">ข้ามไปก่อน</button>`;
+  }
+
+  else if(key === 'home'){
+    html += courseCard();
+    html += `<div class="banner amber">เหลือเวลาเข้าเรียนแบบไม่นับสาย 8 นาที</div>`;
+    html += `<div class="spacer"></div>`;
+    html += `<button class="btn btn-primary" onclick="render('checking')">เช็คชื่อตอนนี้</button>`;
+  }
+
+  else if(key === 'checking'){
+    html += `<h2 class="headline">กำลังตรวจสอบตำแหน่ง</h2>
+      <p class="sub">เทียบตำแหน่งของคุณกับห้อง 134 อาคาร B8</p>
+      <div class="visual"><div class="pulse-ring">
+        <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+        <div class="core">${pinIcon.replace('currentColor','#fff').replace('width="15" height="15"','width="26" height="26"')}</div>
+      </div></div>
+      <div class="spacer"></div>
+      <p class="demo-note">จะไปหน้าสแกนหน้าอัตโนมัติเมื่อยืนยันตำแหน่งได้</p>`;
+    setTimeout(() => { if(document.querySelector('.nav-picker .active').dataset.key==='checking') render('scanning'); }, 1800);
+  }
+
+  else if(key === 'rejectLocation'){
+    html += `<h2 class="headline">อยู่นอกพื้นที่ที่กำหนด</h2>
+      <p class="sub">คุณอยู่ห่างจากห้อง 134 อาคาร B8 ประมาณ 85 เมตร ต้องอยู่ในระยะไม่เกิน 30 เมตรจึงจะเช็คชื่อได้</p>
+      <div class="visual"><div class="fail-badge">${xIcon}</div></div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="render('checking')">ลองใหม่อีกครั้ง</button>`;
+  }
+
+  else if(key === 'scanning'){
+    html += `<h2 class="headline">สแกนใบหน้า</h2>
+      <p class="sub">จัดใบหน้าให้อยู่ในกรอบ แล้วมองตรงกล้อง</p>
+      <div class="visual"><div class="scan-frame">
+        <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+        <div class="scanline"></div>
+        ${faceIcon}
+      </div></div>
+      <div class="spacer"></div>
+      <p class="demo-note">กำลังยืนยันตัวตน…</p>`;
+    setTimeout(() => { if(document.querySelector('.nav-picker .active').dataset.key==='scanning') render('success'); }, 2000);
+  }
+
+  else if(key === 'rejectFace'){
+    html += `<h2 class="headline">ยืนยันใบหน้าไม่สำเร็จ</h2>
+      <p class="sub">ระบบไม่สามารถจับคู่ใบหน้ากับข้อมูลที่ลงทะเบียนไว้ได้ ลองอีกครั้งในที่ที่มีแสงสว่างเพียงพอ</p>
+      <div class="visual"><div class="fail-badge">${xIcon}</div></div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="render('scanning')">ลองใหม่อีกครั้ง</button>
+      <button class="btn btn-ghost" onclick="render('home')">แจ้งอาจารย์ประจำแล็บ</button>`;
+  }
+
+  else if(key === 'success'){
+    html += `<div class="visual"><div class="success-badge">${checkIcon}</div></div>
+      <h2 class="headline" style="text-align:center">เช็คชื่อสำเร็จ</h2>
+      <p class="sub" style="text-align:center">
+        <span class="pill ontime"><span class="pill-dot"></span>เข้าเรียนตรงเวลา</span>
+      </p>
+      <div class="meta-row"><span>เวลาเช็คชื่อ</span><span>9:07 น.</span></div>
+      <div class="meta-row"><span>รายวิชา</span><span>CPH64-242 · LAB1</span></div>
+      <div class="meta-row"><span>ห้อง</span><span>134 อาคาร B8</span></div>
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="render('home')">กลับไปหน้าหลัก</button>`;
+  }
+
+  el.innerHTML = html;
+}
+
+render('consent');
+</script>
+</body>
+</html>
