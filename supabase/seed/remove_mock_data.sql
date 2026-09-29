@@ -9,5 +9,7 @@ delete from public.section_enrollments where section_id::text like 'e0000000-%';
 delete from public.lab_sections where section_id::text like 'e0000000-%';
 delete from public.locations where location_id::text like 'f0000000-%';
 delete from public.courses where course_id::text like 'c0000000-%';
+update public.users set department_id = null where department_id::text like 'dd000000-%';
+delete from public.departments where department_id::text like 'dd000000-%';
 delete from public.semesters where semester_id::text like 'd0000000-%';
 delete from auth.users where email like '%@mock.cph-smart-checkin.test'; -- cascade ไป users/students

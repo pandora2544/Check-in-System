@@ -100,6 +100,57 @@
   .ck{ display:inline-flex; align-items:center; gap:5px; font-size:12.5px; color:var(--ink-muted); margin:0 10px 0 0; font-weight:500; }
   .ck input{ width:auto; }
   .b-on{ background:var(--teal-bg); color:var(--teal-dark); } .b-off{ background:var(--line); color:var(--ink-muted); }
+  /* ปฏิทิน */
+  .calbar{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .calbar h2{ font-size:18px; margin:0 4px; min-width:130px; text-align:center; }
+  .calbar select{ font-family:inherit; font-size:13.5px; padding:6px 8px; border-radius:9px; border:1px solid var(--line); background:#fff; color:var(--ink); }
+  .msum{ display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-muted); margin:-2px 0 10px; }
+  .msum b{ color:var(--ink); font-family:'IBM Plex Mono',monospace; }
+  .cal{ display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:4px; }
+  .cal .wd{ font-size:12px; font-weight:700; color:var(--ink-muted); text-align:center; padding:2px 0 4px; }
+  .cal .wd.we{ color:var(--brick); }
+  .day{ min-height:96px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:6px; text-align:left; font-family:inherit; color:var(--ink); cursor:pointer; display:flex; flex-direction:column; gap:3px; overflow:hidden; }
+  .day:hover{ border-color:var(--teal); }
+  .day.out{ opacity:.35; }
+  .day.empty{ cursor:default; background:transparent; }
+  .day.today{ border:2px solid var(--teal); }
+  .day .dn{ display:flex; align-items:center; gap:4px; font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px; }
+  .day.today .dn .n{ background:var(--teal); color:#fff; border-radius:999px; padding:0 6px; }
+  .day .cnt{ margin-left:auto; font-size:10.5px; font-weight:700; background:var(--line); border-radius:999px; padding:1px 6px; color:var(--ink-muted); font-family:'IBM Plex Sans Thai',sans-serif; }
+  .cchip{ display:block; font-size:11px; font-weight:600; padding:1px 5px; border-radius:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-left:3px solid; background:#fff; }
+  .cchip.mine{ font-weight:700; }
+  .more{ font-size:10.5px; color:var(--ink-muted); }
+  .rate{ margin-top:auto; font-size:10.5px; color:var(--ink-muted); }
+  .rate i{ display:block; height:4px; border-radius:2px; background:var(--line); overflow:hidden; margin-top:2px; }
+  .rate i b{ display:block; height:100%; background:#3C8C65; }
+  .dots{ display:none; gap:3px; flex-wrap:wrap; }
+  .dots i{ width:7px; height:7px; border-radius:50%; display:block; }
+  @media (max-width:640px){
+    .cal{ gap:3px; } .day{ min-height:62px; padding:4px; border-radius:9px; }
+    .cchip, .more{ display:none; } .dots{ display:flex; }
+    .day.today .dn .n{ padding:0 4px; } .day .cnt{ font-size:10px; padding:0 5px; } .day .cnt .u, .rate span{ display:none; }
+    .dayhead h2{ font-size:15px; flex:1; text-align:center; } .dayhead .spacer{ display:none; } #dayLive{ width:100%; }
+  }
+  .legend{ display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--ink-muted); margin-top:10px; }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .legend i{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+  /* รายวัน */
+  .dayhead{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .dayhead h2{ font-size:17px; margin:0 4px; }
+  .course{ background:var(--surface); border:1px solid var(--line); border-left:5px solid var(--teal); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+  .course .ch{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .course .cc{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:15px; }
+  .course .cn{ font-weight:600; font-size:14.5px; }
+  .course .cm{ font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
+  .srow{ display:grid; grid-template-columns:auto 1fr auto; gap:4px 10px; align-items:center; width:100%; text-align:left; font-family:inherit; color:var(--ink); background:#fff; border:1px solid var(--line); border-radius:11px; padding:8px 10px; margin-top:6px; cursor:pointer; }
+  .srow:hover{ border-color:var(--teal); }
+  .srow.live{ border:2px solid var(--teal); }
+  .srow .time{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13.5px; }
+  .srow .info{ font-size:12.5px; color:var(--ink-muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .srow .bar{ grid-column:1 / -1; margin-top:2px; height:6px; }
+  .srow .counts{ grid-column:1 / -1; margin-top:0; }
+  .showall{ font-family:inherit; font-size:12.5px; background:none; border:none; color:var(--teal-dark); font-weight:600; cursor:pointer; padding:6px 2px 0; }
+  .b-mine{ background:var(--teal-bg); color:var(--teal-dark); }
   [hidden]{ display:none !important; }
 </style>
 </head>
@@ -108,7 +159,7 @@
   <header>
     <div>
       <h1>เช็คชื่อ — หน้าอาจารย์</h1>
-      <div class="muted">ดูการเข้าเรียนสด · เช็คชื่อแทน · แก้สถานะ · แจ้งเตือน Telegram</div>
+      <div class="muted">ปฏิทินแล็บ · ดูการเข้าเรียนสด · เช็คชื่อแทน · ใบเซ็นชื่อ · แจ้งเตือน Telegram</div>
     </div>
     <div class="who" id="who"></div>
   </header>
@@ -131,27 +182,47 @@
     </div>
   </section>
 
-  <!-- รายการคาบ -->
-  <section id="viewList" hidden>
-    <div class="datebar">
-      <button class="btn btn-ghost btn-sm" id="prevDay" aria-label="วันก่อนหน้า">◀</button>
-      <input type="date" id="date">
-      <button class="btn btn-ghost btn-sm" id="nextDay" aria-label="วันถัดไป">▶</button>
-      <button class="btn btn-ghost btn-sm" id="today">วันนี้</button>
+  <!-- ปฏิทินรายเดือน -->
+  <section id="viewCal" hidden>
+    <div class="calbar">
+      <button class="btn btn-ghost btn-sm" id="calPrev" aria-label="เดือนก่อนหน้า">◀</button>
+      <h2 id="calTitle"></h2>
+      <button class="btn btn-ghost btn-sm" id="calNext" aria-label="เดือนถัดไป">▶</button>
+      <button class="btn btn-ghost btn-sm" id="calToday">วันนี้</button>
       <span class="spacer"></span>
-      <div class="chips" id="rangeChips">
-        <button class="chip on" data-range="now">ช่วงนี้</button>
-        <button class="chip" data-range="all">ทั้งวัน</button>
-      </div>
+      <select id="deptSel" hidden aria-label="กรองตามสาขา"></select>
+      <button class="chip" id="mineChip" hidden>เฉพาะวิชาของฉัน</button>
     </div>
-    <div id="sessList"></div>
-    <div class="err" id="listErr"></div>
+    <div class="msum" id="calSum"></div>
+    <div class="cal" id="cal"></div>
+    <div class="legend" id="calLegend"></div>
+    <div class="err" id="calErr"></div>
+  </section>
+
+  <!-- คาบทั้งหมดของวัน -->
+  <section id="viewDay" hidden>
+    <div class="dayhead">
+      <button class="btn btn-ghost btn-sm" id="dayBack">← ปฏิทิน</button>
+      <button class="btn btn-ghost btn-sm" id="dayPrev" aria-label="วันก่อนหน้า">◀</button>
+      <h2 id="dayTitle"></h2>
+      <button class="btn btn-ghost btn-sm" id="dayNext" aria-label="วันถัดไป">▶</button>
+      <span class="spacer"></span>
+      <span class="muted" id="dayLive"></span>
+    </div>
+    <div class="tiles" id="dayTiles" style="margin-top:0"></div>
+    <div class="chips" id="dayChips" style="margin:10px 0;">
+      <button class="chip on" data-f="all">ทั้งหมด</button>
+      <button class="chip" data-f="live">กำลังเรียน/ถัดไป</button>
+      <button class="chip" data-f="mine" id="dayMineChip">วิชาของฉัน</button>
+    </div>
+    <div id="dayList"></div>
+    <div class="err" id="dayErr"></div>
   </section>
 
   <!-- รายละเอียดคาบ -->
   <section id="viewSession" hidden>
     <div class="row" style="margin-bottom:8px;">
-      <button class="btn btn-ghost btn-sm" id="back">← รายการคาบ</button>
+      <button class="btn btn-ghost btn-sm" id="back">← คาบทั้งหมดของวัน</button>
       <span class="spacer"></span>
       <span class="muted" id="liveInfo"></span>
       <button class="btn btn-ghost btn-sm" id="btnSheet" title="ดาวน์โหลดใบเซ็นชื่อของคาบนี้เป็นไฟล์ Excel">📥 ใบเซ็นชื่อ (Excel)</button>
@@ -245,7 +316,7 @@ async function staffApi(action, extra = {}) {
   return json.data;
 }
 
-function show(view) { ['viewLogin', 'viewList', 'viewSession'].forEach((v) => ($(v).hidden = v !== view)); }
+function show(view) { ['viewLogin', 'viewCal', 'viewDay', 'viewSession'].forEach((v) => ($(v).hidden = v !== view)); window.scrollTo(0, 0); }
 function showLogin(msg) { me = null; $('who').innerHTML = ''; show('viewLogin'); $('loginErr').textContent = msg || ''; stopRefresh(); }
 
 $('loginForm').addEventListener('submit', async (e) => {
@@ -258,34 +329,219 @@ $('loginForm').addEventListener('submit', async (e) => {
   start();
 });
 
+let departments = [];
 async function start() {
   try {
     const d = await staffApi('me');
-    me = d.user; mySections = d.sections || [];
-    $('who').innerHTML = `<b>${esc(me.full_name)}</b><br>${me.role === 'admin' ? 'ผู้ดูแลระบบ' : 'อาจารย์'} · ${d.sections.length} กลุ่มเรียน · <a href="#" id="logout">ออกจากระบบ</a>`;
-    $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); showLogin(); });
-    if (!$('date').value) $('date').value = bkkToday();
-    show('viewList');
-    loadSessions();
+    me = d.user; mySections = d.sections || []; departments = d.departments || [];
+    const dept = me.department ? ` · ${esc(me.department.name)}` : '';
+    $('who').innerHTML = `<b>${esc(me.full_name)}</b><br>${me.role === 'admin' ? 'ผู้ดูแลระบบ' : 'อาจารย์'}${dept} · <a href="#" id="logout">ออกจากระบบ</a>`;
+    $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); location.hash = ''; showLogin(); });
+    // ตัวกรองสาขา: แอดมินเลือกได้ทุกสาขา · บุคลากรเห็นเฉพาะสาขาตัวเอง (+ วิชาที่ตัวเองสอน)
+    if (departments.length > 1) {
+      $('deptSel').innerHTML = `<option value="">ทุกสาขา</option>` + departments.map((x) => `<option value="${esc(x.department_id)}">${esc(x.name)}</option>`).join('');
+      $('deptSel').hidden = false;
+    }
+    assignColors(mySections.map((x) => x.course_code).filter(Boolean));
+    const hasOthers = mySections.some((x) => !x.mine) && mySections.some((x) => x.mine);
+    $('mineChip').hidden = !hasOthers; $('dayMineChip').hidden = !hasOthers;
+    route();
   } catch (err) {
     if (me === null && !$('viewLogin').hidden) return;
     $('loginErr').textContent = err.message; show('viewLogin');
   }
 }
 
-// ---- รายการคาบ ----
-let range = 'now';
-$('rangeChips').addEventListener('click', (e) => {
+// ---- เส้นทางหน้า (#cal/YYYY-MM · #day/YYYY-MM-DD · #s/<schedule_id>) — ปุ่มย้อนกลับของมือถือใช้ได้ ----
+function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+window.addEventListener('hashchange', () => { if (me) route(); });
+function route() {
+  const [kind, arg] = location.hash.replace(/^#/, '').split('/');
+  stopRefresh(); stopDayRefresh();
+  if (kind === 's' && arg) return openSession(arg);
+  if (kind === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '')) return openDay(arg);
+  return openCal(/^\d{4}-\d{2}$/.test(arg || '') ? arg : bkkToday().slice(0, 7));
+}
+
+const PALETTE = ['#3C6E58', '#8A5A1F', '#2F5E8C', '#8C3B5E', '#5E4C8C', '#6B7D2A', '#A0522D', '#2A7D7B'];
+// สีประจำวิชา: ไล่ตามลำดับรหัสวิชาที่ผู้ใช้เห็น → วิชาไม่ซ้ำสีกัน (ถ้าไม่เกิน 8 วิชา)
+const colorMap = new Map();
+function assignColors(codes) { [...new Set(codes)].sort().forEach((c) => { if (!colorMap.has(c)) colorMap.set(c, PALETTE[colorMap.size % PALETTE.length]); }); }
+const courseColor = (code) => { if (!colorMap.has(code)) assignColors([code]); return colorMap.get(code); };
+const thMonth = (ym) => new Date(`${ym}-15T12:00:00+07:00`).toLocaleDateString('th-TH', { month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' });
+const thDayShort = (d) => new Date(`${d}T12:00:00+07:00`).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Asia/Bangkok' });
+const thDay = (d) => new Date(`${d}T12:00:00+07:00`).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' });
+const addDays = (d, n) => { const x = new Date(`${d}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const addMonths = (ym, n) => { const [y, m] = ym.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1 + n, 1)); return x.toISOString().slice(0, 7); };
+let deptFilter = '', mineOnly = false;
+try { deptFilter = sessionStorage.getItem('cph_dept') || ''; mineOnly = sessionStorage.getItem('cph_mine') === '1'; } catch { /* ไม่มี storage */ }
+const saveFilters = () => { try { sessionStorage.setItem('cph_dept', deptFilter); sessionStorage.setItem('cph_mine', mineOnly ? '1' : '0'); } catch { /* ข้าม */ } };
+
+// ---- ปฏิทินรายเดือน ----
+let calMonth = null, calData = null;
+$('calPrev').onclick = () => go(`#cal/${addMonths(calMonth, -1)}`);
+$('calNext').onclick = () => go(`#cal/${addMonths(calMonth, 1)}`);
+$('calToday').onclick = () => go(`#cal/${bkkToday().slice(0, 7)}`);
+$('deptSel').onchange = () => { deptFilter = $('deptSel').value; saveFilters(); openCal(calMonth); };
+$('mineChip').onclick = () => { mineOnly = !mineOnly; saveFilters(); renderCal(); };
+
+async function openCal(ym) {
+  show('viewCal'); calMonth = ym; $('calErr').textContent = '';
+  $('calTitle').textContent = thMonth(ym);
+  $('deptSel').value = deptFilter;
+  if (!calData || calData.month !== ym || calData.dept !== deptFilter) renderCalSkeleton(ym);
+  try {
+    const d = await staffApi('calendar', { month: ym, department_id: deptFilter || undefined });
+    if (calMonth !== ym) return;
+    calData = { ...d, dept: deptFilter };
+    renderCal();
+  } catch (err) { $('calErr').textContent = err.message; }
+}
+
+function monthCells(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1)), days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lead = (first.getUTCDay() + 6) % 7; // เริ่มวันจันทร์
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(`${ym}-${String(d).padStart(2, '0')}`);
+  while (cells.length % 7) cells.push(null);
+  return cells;
+}
+const WD = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+function renderCalSkeleton(ym) {
+  $('cal').innerHTML = WD.map((w, i) => `<div class="wd ${i > 4 ? 'we' : ''}">${w}</div>`).join('') +
+    monthCells(ym).map((d) => d ? `<div class="day"><div class="dn"><span class="n">${Number(d.slice(8))}</span></div></div>` : '<div class="day empty"></div>').join('');
+  $('calSum').innerHTML = '<span>กำลังโหลด…</span>'; $('calLegend').innerHTML = '';
+}
+
+function renderCal() {
+  if (!calData) return;
+  $('mineChip').classList.toggle('on', mineOnly);
+  const byDate = new Map(calData.days.map((x) => [x.date, x]));
+  const today = bkkToday();
+  const courses = new Map();
+  let totalSessions = 0, expected = 0, attended = 0, labDays = 0;
+  const cells = monthCells(calMonth).map((d) => {
+    if (!d) return '<div class="day empty"></div>';
+    const x = byDate.get(d);
+    const list = (x?.courses || []).filter((c) => !mineOnly || c.mine);
+    const n = list.reduce((a, c) => a + c.sessions, 0);
+    if (n) { labDays++; totalSessions += n; }
+    list.forEach((c) => courses.set(c.course_code, c));
+    if (x && !mineOnly) { expected += x.expected; attended += x.attended; }
+    const rate = x && !mineOnly && x.expected ? Math.round((x.attended / x.expected) * 100) : null;
+    const chips = list.slice(0, 3).map((c) => `<span class="cchip ${c.mine ? 'mine' : ''}" style="border-color:${courseColor(c.course_code)};color:${courseColor(c.course_code)}" title="${esc(c.course_name)}">${esc(c.course_code)}${c.sessions > 1 ? ` ×${c.sessions}` : ''}</span>`).join('');
+    const more = list.length > 3 ? `<span class="more">+ อีก ${list.length - 3} วิชา</span>` : '';
+    const dots = `<span class="dots">${list.slice(0, 6).map((c) => `<i style="background:${courseColor(c.course_code)}"></i>`).join('')}</span>`;
+    const live = x?.live ? '<span class="live-dot" title="กำลังเรียน"></span>' : '';
+    return `<button class="day ${d === today ? 'today' : ''}" data-d="${d}" ${n ? '' : 'aria-label="ไม่มีคาบ"'}>
+      <div class="dn"><span class="n">${Number(d.slice(8))}</span>${live}${n ? `<span class="cnt">${n}<span class="u"> คาบ</span></span>` : ''}</div>
+      ${chips}${more}${dots}
+      ${rate != null ? `<div class="rate"><span>เข้าเรียน ${rate}%</span><i><b style="width:${rate}%"></b></i></div>` : ''}
+    </button>`;
+  });
+  $('cal').innerHTML = WD.map((w, i) => `<div class="wd ${i > 4 ? 'we' : ''}">${w}</div>`).join('') + cells.join('');
+  $('cal').querySelectorAll('.day[data-d]').forEach((b) => b.addEventListener('click', () => go(`#day/${b.dataset.d}`)));
+  const rate = expected ? `${Math.round((attended / expected) * 100)}%` : '–';
+  $('calSum').innerHTML = `<span>มีแล็บ <b>${labDays}</b> วัน</span><span><b>${totalSessions}</b> คาบ</span><span><b>${courses.size}</b> วิชา</span>` +
+    (mineOnly ? '' : `<span>อัตราเข้าเรียน (คาบที่จบแล้ว) <b>${rate}</b></span>`);
+  $('calLegend').innerHTML = [...courses.values()].sort((a, b) => a.course_code.localeCompare(b.course_code))
+    .map((c) => `<span><i style="background:${courseColor(c.course_code)}"></i>${esc(c.course_code)} ${esc(c.course_name)}</span>`).join('');
+}
+
+// ---- คาบทั้งหมดของวัน (จัดกลุ่มตามวิชา) ----
+let dayDate = null, dayData = null, dayFilter = 'all', dayTimer = null, expanded = new Set();
+function stopDayRefresh() { clearInterval(dayTimer); dayTimer = null; }
+$('dayBack').onclick = () => go(`#cal/${(dayDate || bkkToday()).slice(0, 7)}`);
+$('dayPrev').onclick = () => go(`#day/${addDays(dayDate, -1)}`);
+$('dayNext').onclick = () => go(`#day/${addDays(dayDate, 1)}`);
+$('dayChips').addEventListener('click', (e) => {
   const b = e.target.closest('.chip'); if (!b) return;
-  range = b.dataset.range;
-  $('rangeChips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === b));
-  loadSessions();
+  dayFilter = b.dataset.f;
+  $('dayChips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === b));
+  renderDay();
 });
-function shiftDay(n) { const d = new Date(`${$('date').value}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); $('date').value = d.toISOString().slice(0, 10); loadSessions(); }
-$('prevDay').onclick = () => shiftDay(-1);
-$('nextDay').onclick = () => shiftDay(1);
-$('today').onclick = () => { $('date').value = bkkToday(); loadSessions(); };
-$('date').addEventListener('change', loadSessions);
+
+async function openDay(date, silent = false) {
+  if (!silent) {
+    show('viewDay'); dayDate = date; $('dayErr').textContent = '';
+    $('dayTitle').textContent = innerWidth < 640 ? thDayShort(date) : thDay(date);
+    if (dayData?.date !== date) { $('dayList').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('dayTiles').innerHTML = ''; expanded = new Set(); }
+    if (date === bkkToday() && dayFilter === 'all') { /* วันนี้: คงตัวกรองเดิม */ }
+  }
+  try {
+    const d = await staffApi('day', { date, department_id: deptFilter || undefined });
+    if (dayDate !== date) return;
+    dayData = d; renderDay();
+    $('dayLive').innerHTML = date === bkkToday() ? `<span class="live-dot"></span>อัปเดตทุก 30 วิ · ${fmtTime(new Date().toISOString())}` : '';
+  } catch (err) { if (!silent) $('dayErr').textContent = err.message; }
+  stopDayRefresh();
+  if (date === bkkToday()) dayTimer = setInterval(() => { if (!document.hidden && !$('viewDay').hidden) openDay(date, true); }, 30000);
+}
+
+const PHASE = { live: { label: 'กำลังเรียน', cls: 'b-live' }, upcoming: { label: 'ยังไม่เริ่ม', cls: 'b-soon' }, done: { label: 'จบแล้ว', cls: 'b-done' }, cancelled: { label: 'ยกเลิก', cls: 'b-cancel' } };
+
+function renderDay() {
+  if (!dayData) return;
+  let list = dayData.sessions;
+  if (dayFilter === 'mine' || mineOnly) list = list.filter((s) => s.mine);
+  const now = Date.now();
+  if (dayFilter === 'live') list = list.filter((s) => s.phase === 'live' || (s.phase === 'upcoming' && bkkTs(s.class_date, s.start_time) - now < 3 * 3600e3));
+
+  // ภาพรวมของวัน
+  const all = dayData.sessions.filter((s) => (!mineOnly || s.mine) && s.phase !== 'cancelled');
+  const courses = new Set(all.map((s) => s.course_code));
+  const started = all.filter((s) => s.phase !== 'upcoming');
+  const exp = started.reduce((a, s) => a + s.total, 0), came = started.reduce((a, s) => a + s.present + s.late, 0);
+  const live = all.filter((s) => s.phase === 'live').length;
+  $('dayTiles').innerHTML = [
+    ['วิชา', courses.size, 'var(--ink)'], ['คาบ', all.length, 'var(--ink)'], ['กำลังเรียน', live, 'var(--teal-dark)'],
+    ['นักศึกษา (คาบที่เริ่มแล้ว)', exp, 'var(--ink)'], ['เข้าเรียนแล้ว', came, 'var(--teal-dark)'], ['อัตรา', exp ? `${Math.round((came / exp) * 100)}%` : '–', 'var(--ink)'],
+  ].map(([l, n, col]) => `<div class="tile"><b style="color:${col}">${n}</b><span>${l}</span></div>`).join('');
+
+  if (!list.length) {
+    $('dayList').innerHTML = `<div class="card muted">${dayData.sessions.length ? 'ไม่มีคาบตามตัวกรองนี้' : 'ไม่มีแล็บในวันนี้'}</div>`;
+    return;
+  }
+  const groups = new Map();
+  for (const s of list) { if (!groups.has(s.course_code)) groups.set(s.course_code, []); groups.get(s.course_code).push(s); }
+  $('dayList').innerHTML = [...groups.entries()].map(([code, ss]) => {
+    const f = ss[0], color = courseColor(code);
+    const instructors = [...new Set(ss.map((s) => s.instructor_name).filter(Boolean))].join(', ');
+    const sections = new Set(ss.map((s) => s.section_no)).size;
+    // วิชาที่มีหลายคาบในวันเดียว (เช่น คาบทดสอบทุกชั่วโมง) แสดงเฉพาะช่วงที่เกี่ยวข้องก่อน
+    let shown = ss;
+    if (ss.length > 4 && !expanded.has(code)) {
+      const idx = Math.max(0, ss.findIndex((s) => s.phase === 'live' || s.phase === 'upcoming'));
+      const from = ss.every((s) => s.phase === 'done') ? ss.length - 3 : Math.max(0, idx - 1);
+      shown = ss.slice(from, from + 3);
+    }
+    const rows = shown.map((s) => {
+      const ph = PHASE[s.phase] || PHASE.done;
+      const done = s.present + s.late + s.excused + s.absent, none = Math.max(0, s.total - done);
+      const w = (n) => (s.total ? (n / s.total) * 100 : 0);
+      return `<button class="srow ${s.phase === 'live' ? 'live' : ''}" data-id="${esc(s.schedule_id)}">
+        <span class="time">${esc(s.start_time)}–${esc(s.end_time)}</span>
+        <span class="info">กลุ่ม ${esc(s.section_no)} · ${esc(s.room)}</span>
+        <span><span class="badge ${ph.cls}">${ph.label}</span></span>
+        ${s.phase === 'upcoming' ? `<span class="counts" style="grid-column:1/-1">${s.total} คน</span>` : `
+        <div class="bar"><i class="c-present" style="width:${w(s.present)}%"></i><i class="c-late" style="width:${w(s.late)}%"></i><i class="c-excused" style="width:${w(s.excused)}%"></i><i class="c-absent" style="width:${w(s.absent)}%"></i></div>
+        <div class="counts"><span>มา ${s.present}</span><span>สาย ${s.late}</span><span>ลา ${s.excused}</span><span>ขาด ${s.absent}</span>${none ? `<span>ยังไม่เช็ค ${none}</span>` : ''}<span>ออก ${s.checked_out}</span><span>รวม ${s.total}</span></div>`}
+      </button>`;
+    }).join('');
+    const toggle = ss.length > 4 ? `<button class="showall" data-code="${esc(code)}">${expanded.has(code) ? 'ย่อ' : `แสดงทั้งหมด ${ss.length} คาบ`}</button>` : '';
+    return `<div class="course" style="border-left-color:${color}">
+      <div class="ch"><span class="cc" style="color:${color}">${esc(code)}</span><span class="cn">${esc(f.course_name)}</span>${ss.some((s) => s.mine) ? '<span class="badge b-mine">ของฉัน</span>' : ''}</div>
+      <div class="cm">${esc(f.department_name || '')}${instructors ? ` · ${esc(instructors)}` : ''} · ${sections} กลุ่มเรียน · ${ss.length} คาบ</div>
+      ${rows}${toggle}
+    </div>`;
+  }).join('');
+  $('dayList').querySelectorAll('.srow').forEach((b) => b.addEventListener('click', () => go(`#s/${b.dataset.id}`)));
+  $('dayList').querySelectorAll('.showall').forEach((b) => b.addEventListener('click', () => {
+    expanded.has(b.dataset.code) ? expanded.delete(b.dataset.code) : expanded.add(b.dataset.code); renderDay();
+  }));
+}
 
 function sessState(s) {
   const now = Date.now(), st = bkkTs(s.class_date, s.start_time), en = bkkTs(s.class_date, s.end_time);
@@ -295,42 +551,9 @@ function sessState(s) {
   return { key: 'done', label: 'จบแล้ว', cls: 'b-done' };
 }
 
-async function loadSessions() {
-  $('listErr').textContent = '';
-  $('sessList').innerHTML = '<div class="muted">กำลังโหลด…</div>';
-  try {
-    const d = await staffApi('sessions', { date: $('date').value });
-    let list = d.sessions;
-    const isToday = d.date === bkkToday();
-    if (range === 'now' && isToday) {
-      const now = Date.now();
-      list = list.filter((s) => bkkTs(s.class_date, s.end_time) >= now - 2 * 3600e3 && bkkTs(s.class_date, s.start_time) <= now + 3 * 3600e3);
-    }
-    $('rangeChips').hidden = !isToday;
-    if (!list.length) {
-      $('sessList').innerHTML = `<div class="card muted">${d.sessions.length ? 'ไม่มีคาบในช่วงนี้ — กด "ทั้งวัน" เพื่อดูทั้งหมด' : 'ไม่มีคาบเรียนในวันนี้'}</div>`;
-      return;
-    }
-    $('sessList').innerHTML = list.map((s) => {
-      const st = sessState(s);
-      const done = s.present + s.late + s.excused + s.absent, none = Math.max(0, s.total - done);
-      const w = (n) => (s.total ? (n / s.total) * 100 : 0);
-      return `<button class="sess ${st.key === 'live' ? 'live' : ''}" data-id="${esc(s.schedule_id)}">
-        <div class="top"><span class="time">${esc(s.start_time)}–${esc(s.end_time)}</span><span class="title">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)}</span><span class="spacer"></span><span class="badge ${st.cls}">${st.label}</span></div>
-        <div class="meta">${esc(s.course_name)} · ${esc(s.room)}</div>
-        <div class="bar"><i class="c-present" style="width:${w(s.present)}%"></i><i class="c-late" style="width:${w(s.late)}%"></i><i class="c-excused" style="width:${w(s.excused)}%"></i><i class="c-absent" style="width:${w(s.absent)}%"></i></div>
-        <div class="counts"><span>มา ${s.present}</span><span>สาย ${s.late}</span><span>ลา ${s.excused}</span><span>ขาด ${s.absent}</span><span>ยังไม่เช็ค ${none}</span><span>ออกแล้ว ${s.checked_out}</span><span>รวม ${s.total} คน</span></div>
-      </button>`;
-    }).join('');
-    $('sessList').querySelectorAll('.sess').forEach((b) => b.addEventListener('click', () => openSession(b.dataset.id)));
-  } catch (err) {
-    $('sessList').innerHTML = ''; $('listErr').textContent = err.message;
-  }
-}
-
 // ---- รายละเอียดคาบ ----
 let current = null, rosterFilter = 'all', refreshTimer = null;
-$('back').onclick = () => { stopRefresh(); current = null; show('viewList'); loadSessions(); };
+$('back').onclick = () => { const d = current?.data?.schedule?.class_date; stopRefresh(); current = null; go(`#day/${d || dayDate || bkkToday()}`); };
 $('rosterChips').addEventListener('click', (e) => {
   const b = e.target.closest('.chip'); if (!b) return;
   rosterFilter = b.dataset.f;
@@ -377,12 +600,13 @@ function renderHead() {
   $('sessHead').innerHTML = `
     <div class="row"><span class="mono" style="font-weight:600">${esc(s.start_time)}–${esc(s.end_time)} น.</span><span class="badge ${st.cls}">${st.label}</span></div>
     <div style="font-size:17px;font-weight:700;margin-top:4px;">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)} · ${esc(s.course_name)}</div>
-    <div class="muted">${esc(s.room)} · ${new Date(`${s.class_date}T00:00:00+07:00`).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · สายเมื่อเกิน ${esc(s.late_threshold_minutes)} นาที</div>`;
+    <div class="muted">${esc(s.room)} · ${thDay(s.class_date)} · สายเมื่อเกิน ${esc(s.late_threshold_minutes)} นาที</div>
+    <div class="muted">${esc(s.department_name || '')}${s.instructor_name ? ` · ผู้สอน ${esc(s.instructor_name)}` : ''}${s.editable ? '' : ' · <b>ดูได้อย่างเดียว</b> (แก้ได้เฉพาะอาจารย์ผู้สอน)'}</div>`;
   $('tiles').innerHTML = [
     ['มา', c.present, 'var(--teal-dark)'], ['สาย', c.late, 'var(--amber-ink)'], ['ลา', c.excused, 'var(--blue)'],
     ['ขาด', c.absent, 'var(--brick)'], ['ยังไม่เช็ค', c.none, 'var(--ink-muted)'], ['ออกแล้ว', `${c.out}/${c.present + c.late}`, 'var(--ink)'],
   ].map(([l, n, col]) => `<div class="tile"><b style="color:${col}">${n}</b><span>${l}</span></div>`).join('');
-  $('markAbsentAll').hidden = !(st.key === 'done' && c.none > 0);
+  $('markAbsentAll').hidden = !(st.key === 'done' && c.none > 0 && s.editable);
   $('markAbsentAll').textContent = `ให้คนที่ยังไม่เช็ค (${c.none}) = ขาด`;
 }
 
@@ -416,7 +640,7 @@ function renderRoster() {
         <span class="pill ${st ? 'p-' + st.cls : 'p-none'}">${st ? st.long : 'ยังไม่เช็ค'}</span>
         ${a?.left_early ? '<br><span class="pill p-late" style="margin-top:4px">ออกก่อนเวลา</span>' : ''}
       </div>
-      <div class="actions">
+      <div class="actions" ${current.data.schedule.editable ? '' : 'hidden'}>
         <div class="seg" role="group" aria-label="เปลี่ยนสถานะ">
           ${Object.entries(STATUS).map(([k, v]) => `<button class="s-${k} ${a?.status === k ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}
         </div>
@@ -498,7 +722,7 @@ function renderNotify() {
   $('ntfBadge').textContent = active ? `เปิดอยู่ ${active} กลุ่ม` : (ntf.channels.length ? 'ปิดอยู่' : 'ยังไม่ผูกกลุ่ม');
   $('ntfBody').hidden = !ntfOpen; $('ntfArrow').textContent = ntfOpen ? '▴' : '▾';
   $('ntfAdmin').hidden = me?.role !== 'admin';
-  $('ntfSendNow').disabled = !active;
+  $('ntfSendNow').disabled = !active || ntf.editable === false;
   const sw = (key, on, extra = '') => `<label class="sw"><input type="checkbox" data-k="${key}" ${on ? 'checked' : ''} ${extra}><span></span></label>`;
   const rows = [];
   rows.push(`<div class="ntf-row">
@@ -519,6 +743,7 @@ function renderNotify() {
       ${sw('is_active', c.is_active, ntf.telegram_ready ? '' : 'disabled')}</div>`);
   }
   $('ntfRows').innerHTML = rows.join('');
+  if (ntf.editable === false) $('ntfRows').querySelectorAll('input').forEach((i) => (i.disabled = true));
   $('ntfRows').querySelectorAll('input[type=checkbox]').forEach((inp) => inp.addEventListener('change', () => {
     const row = inp.closest('.ntf-row'), chat = row.dataset.chat;
     saveNotify({ [inp.dataset.k]: inp.checked, ...(chat ? { chat_id: chat } : {}) }, inp);

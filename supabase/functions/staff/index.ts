@@ -1,72 +1,75 @@
 // POST /functions/v1/staff   — API สำหรับหน้าอาจารย์/แอดมิน (ต้องล็อกอิน)
 // ตรวจ token ในโค้ดเอง (auth.getUser) เพราะโปรเจกต์ใช้ JWT signing key แบบใหม่ — deploy ด้วย verify_jwt: false
-// สิทธิ์: admin เห็นทุกกลุ่มเรียน, instructor เห็นเฉพาะกลุ่มที่ตัวเองสอน
+//
+// สิทธิ์
+//   ดู:   แอดมิน = ทุกกลุ่มเรียน · บุคลากรที่สังกัดสาขา = ทุกกลุ่มเรียนของวิชาในสาขา + กลุ่มที่ตัวเองสอน · ไม่มีสาขา = เฉพาะที่ตัวเองสอน
+//   แก้:  แอดมิน = ทุกกลุ่ม · อาจารย์ = เฉพาะกลุ่มที่ตัวเองสอน (เช็คชื่อแทน, หมายเหตุ, ตั้งค่าแจ้งเตือน)
 //
 // actions:
-//   me                                   ข้อมูลผู้ใช้ + กลุ่มเรียนที่ดูได้
-//   sessions   { date? }                 คาบของวันนั้น (ค่าเริ่มต้น = วันนี้ เวลาไทย) + ยอดมา/สาย/ขาด/ลา/ออก
+//   me                                   ผู้ใช้ + สาขา + รายการสาขา (แอดมินใช้กรอง)
+//   calendar   { month: 'YYYY-MM', department_id? }   ภาพรวมรายวันทั้งเดือน (จำนวนคาบ, วิชา, ยอดเข้าเรียน)
+//   day        { date?, department_id? }  คาบทั้งหมดของวันนั้น + ยอดมา/สาย/ขาด/ลา/ออก (เดิมชื่อ sessions — ยังเรียกชื่อเดิมได้)
 //   session    { schedule_id }           รายชื่อทั้งกลุ่ม + สถานะเช็คชื่อรายคน
 //   mark       { schedule_id, student_id, status, note? }   เช็คชื่อแทน/แก้สถานะ (present|late|absent|excused)
 //   note       { attendance_id, note }   แก้หมายเหตุ
-//   notify_get { section_id }            การตั้งค่าแจ้งเตือน (auto_absent + กลุ่ม Telegram)
-//   notify_set { section_id, auto_absent?, chat_id?, is_active?, notify_mid?, notify_end?, title?, remove? }
-//              อาจารย์: เปิด/ปิดได้เฉพาะกลุ่มของตัวเอง · เพิ่ม/ลบ chat_id ได้เฉพาะแอดมิน
-//   notify_send_now { schedule_id }      ส่งสรุปสถานะ ณ ตอนนี้เข้ากลุ่ม Telegram ที่เปิดอยู่
-//   tg_chats                             (แอดมิน) กลุ่ม Telegram ที่บอทเพิ่งได้รับข้อความ — ใช้หา chat_id
+//   notify_get / notify_set / notify_send_now / tg_chats   ตั้งค่าแจ้งเตือน Telegram (ดูรายละเอียดใน case)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { CORS, bkkAt, bkkDate, fail, json, serviceClient } from '../_shared/http.ts';
 import { buildSummary, hasTelegram, scrub, tg, tgSend } from '../_shared/notify-core.ts';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function getServiceRoleKey(): string {
-  const raw = Deno.env.get('SUPABASE_SECRET_KEYS');
-  if (raw) {
-    try { const p = JSON.parse(raw); if (p?.default) return p.default; } catch { /* ใช้ของเดิม */ }
-  }
-  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-}
-const supabase = createClient(Deno.env.get('SUPABASE_URL')!, getServiceRoleKey());
-
+const supabase = serviceClient();
 const STATUSES = ['present', 'late', 'absent', 'excused'];
-const bkkDate = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
-}
-const fail = (code: string, message: string, status: number) => json({ data: null, error: { code, message } }, status);
-
-type Staff = { user_id: string; full_name: string; role: string; email: string | null };
+type Staff = { user_id: string; full_name: string; role: string; email: string | null; department_id: string | null };
+type Section = {
+  section_id: string; section_no: string; instructor_id: string | null; instructor_name: string | null;
+  course_code: string; course_name: string; department_id: string | null; department_code: string | null;
+  department_name: string | null; color: string | null; term: string | null; mine: boolean; editable: boolean;
+};
 
 async function authStaff(req: Request): Promise<Staff | Response> {
   const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!token) return fail('UNAUTHORIZED', 'กรุณาเข้าสู่ระบบ', 401);
   const { data: auth, error } = await supabase.auth.getUser(token);
   if (error || !auth?.user) return fail('UNAUTHORIZED', 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่', 401);
-  const { data: me } = await supabase.from('users').select('user_id, full_name, role, email').eq('user_id', auth.user.id).maybeSingle();
+  const { data: me } = await supabase.from('users').select('user_id, full_name, role, email, department_id').eq('user_id', auth.user.id).maybeSingle();
   if (!me || !['instructor', 'admin'].includes(me.role)) return fail('FORBIDDEN', 'บัญชีนี้ไม่มีสิทธิ์เข้าหน้าอาจารย์/แอดมิน', 403);
   return me as Staff;
 }
 
-async function allowedSections(me: Staff) {
-  let q = supabase.from('lab_sections').select('section_id, section_no, instructor_id, courses ( course_code, course_name ), semesters ( academic_year, term )');
-  if (me.role !== 'admin') q = q.eq('instructor_id', me.user_id);
-  const { data } = await q;
-  return (data ?? []).map((s: Record<string, any>) => ({
-    section_id: s.section_id, section_no: s.section_no,
+// กลุ่มเรียนที่ผู้ใช้ "ดู" ได้ (พร้อมข้อมูลวิชา/สาขา/อาจารย์) — ใช้ร่วมทุก action
+async function visibleSections(me: Staff, departmentFilter?: string | null): Promise<Section[]> {
+  const { data } = await supabase.from('lab_sections').select(
+    'section_id, section_no, instructor_id, instructor:instructor_id ( full_name ), semesters ( academic_year, term ), ' +
+    'courses!inner ( course_code, course_name, department_id, departments ( code, name, color ) )',
+  );
+  const all = (data ?? []).map((s: Record<string, any>): Section => ({
+    section_id: s.section_id, section_no: s.section_no, instructor_id: s.instructor_id, instructor_name: s.instructor?.full_name ?? null,
     course_code: s.courses?.course_code, course_name: s.courses?.course_name,
+    department_id: s.courses?.department_id ?? null, department_code: s.courses?.departments?.code ?? null,
+    department_name: s.courses?.departments?.name ?? null, color: s.courses?.departments?.color ?? null,
     term: s.semesters ? `${s.semesters.term}/${s.semesters.academic_year}` : null,
+    mine: s.instructor_id === me.user_id, editable: me.role === 'admin' || s.instructor_id === me.user_id,
   }));
+  let list = me.role === 'admin' ? all
+    : all.filter((s) => s.mine || (me.department_id && s.department_id === me.department_id));
+  if (departmentFilter) list = list.filter((s) => s.department_id === departmentFilter);
+  return list.sort((a, b) => a.course_code.localeCompare(b.course_code) || a.section_no.localeCompare(b.section_no));
 }
 
-async function canAccessSection(me: Staff, sectionId: string) {
-  const { data } = await supabase.from('lab_sections').select('section_id, instructor_id, auto_absent').eq('section_id', sectionId).maybeSingle();
-  if (!data || (me.role !== 'admin' && data.instructor_id !== me.user_id)) return null;
-  return data;
+async function sectionAccess(me: Staff, sectionId: string) {
+  const s = (await visibleSections(me)).find((x) => x.section_id === sectionId);
+  return s ?? null;
+}
+
+async function scheduleAccess(me: Staff, scheduleId: string) {
+  const { data: sc } = await supabase.from('schedules')
+    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( late_threshold_minutes )')
+    .eq('schedule_id', scheduleId).maybeSingle();
+  if (!sc) return null;
+  const sec = await sectionAccess(me, sc.section_id);
+  if (!sec) return null;
+  return { sc: sc as Record<string, any>, sec };
 }
 
 async function notifySettings(sectionId: string) {
@@ -77,15 +80,18 @@ async function notifySettings(sectionId: string) {
   return { section_id: sectionId, auto_absent: !!sec?.auto_absent, telegram_ready: hasTelegram(), channels: ch ?? [] };
 }
 
-async function canAccessSchedule(me: Staff, scheduleId: string) {
-  const { data: sc } = await supabase.from('schedules')
-    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( section_no, instructor_id, late_threshold_minutes, courses ( course_code, course_name ) )')
-    .eq('schedule_id', scheduleId).maybeSingle();
-  if (!sc) return null;
-  const sec = sc.lab_sections as unknown as { instructor_id: string };
-  if (me.role !== 'admin' && sec?.instructor_id !== me.user_id) return null;
-  return sc as Record<string, any>;
+async function stats(from: string, to: string, sections: Section[]) {
+  if (!sections.length) return [];
+  const { data, error } = await supabase.rpc('staff_schedule_stats', { p_from: from, p_to: to, p_section_ids: sections.map((s) => s.section_id) });
+  if (error) throw error;
+  return (data ?? []) as Record<string, any>[];
 }
+
+const phase = (row: Record<string, any>, now: number) => {
+  if (row.status === 'cancelled') return 'cancelled';
+  const st = bkkAt(row.class_date, row.start_time).getTime(), en = bkkAt(row.class_date, row.end_time).getTime();
+  return now < st ? 'upcoming' : now < en ? 'live' : 'done';
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -96,45 +102,70 @@ Deno.serve(async (req: Request) => {
 
   let body: Record<string, any>;
   try { body = await req.json(); } catch { return fail('BAD_REQUEST', 'JSON body ไม่ถูกต้อง', 400); }
+  const deptFilter = typeof body.department_id === 'string' && body.department_id ? body.department_id : null;
 
   try {
     switch (body.action) {
-      case 'me':
-        return json({ data: { user: me, sections: await allowedSections(me) } });
+      case 'me': {
+        const [sections, { data: depts }] = await Promise.all([
+          visibleSections(me),
+          supabase.from('departments').select('department_id, code, name, color').order('code'),
+        ]);
+        const myDept = (depts ?? []).find((d) => d.department_id === me.department_id) ?? null;
+        const shownDepts = me.role === 'admin' ? depts ?? [] : (depts ?? []).filter((d) => sections.some((s) => s.department_id === d.department_id));
+        return json({ data: { user: { ...me, department: myDept }, sections, departments: shownDepts } });
+      }
 
+      case 'calendar': {
+        const m = /^(\d{4})-(\d{2})$/.exec(String(body.month ?? '')) ?? /^(\d{4})-(\d{2})/.exec(bkkDate(new Date()))!;
+        const y = Number(m[1]), mo = Number(m[2]);
+        const from = `${m[1]}-${m[2]}-01`;
+        const to = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+        const sections = await visibleSections(me, deptFilter);
+        const rows = await stats(from, to, sections);
+        const secMap = new Map(sections.map((s) => [s.section_id, s]));
+        const now = Date.now();
+        const days: Record<string, any> = {};
+        for (const r of rows) {
+          const sec = secMap.get(r.section_id)!;
+          const d = (days[r.class_date] ??= { date: r.class_date, sessions: 0, live: 0, done: 0, expected: 0, attended: 0, absent: 0, excused: 0, courses: {} as Record<string, any> });
+          const ph = phase(r, now);
+          if (ph === 'cancelled') continue;
+          d.sessions++;
+          if (ph === 'live') d.live++;
+          if (ph === 'done') { d.done++; d.expected += r.enrolled; d.attended += r.present + r.late; d.absent += r.absent; d.excused += r.excused; }
+          const c = (d.courses[sec.course_code] ??= { course_code: sec.course_code, course_name: sec.course_name, department_code: sec.department_code, color: sec.color, sessions: 0, mine: false });
+          c.sessions++; c.mine ||= sec.mine;
+        }
+        const list = Object.values(days).map((d: any) => ({ ...d, courses: Object.values(d.courses).sort((a: any, b: any) => a.course_code.localeCompare(b.course_code)) }));
+        return json({ data: { month: `${m[1]}-${m[2]}`, from, to, days: list } });
+      }
+
+      case 'day':
       case 'sessions': {
         const date = /^\d{4}-\d{2}-\d{2}$/.test(String(body.date ?? '')) ? String(body.date) : bkkDate(new Date());
-        const sections = await allowedSections(me);
-        if (sections.length === 0) return json({ data: { date, sessions: [] } });
-        const secIds = sections.map((s) => s.section_id);
-        const { data: sch } = await supabase.from('schedules')
-          .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name )')
-          .eq('class_date', date).in('section_id', secIds).order('start_time');
-        const ids = (sch ?? []).map((s) => s.schedule_id);
-        const [{ data: att }, { data: enr }] = await Promise.all([
-          ids.length ? supabase.from('attendance_records').select('schedule_id, status, check_out_time').in('schedule_id', ids) : Promise.resolve({ data: [] as any[] }),
-          supabase.from('section_enrollments').select('section_id').in('section_id', secIds),
-        ]);
-        const enrolled = new Map<string, number>();
-        for (const e of enr ?? []) enrolled.set(e.section_id, (enrolled.get(e.section_id) ?? 0) + 1);
+        const sections = await visibleSections(me, deptFilter);
+        const rows = await stats(date, date, sections);
         const secMap = new Map(sections.map((s) => [s.section_id, s]));
-        const sessions = (sch ?? []).map((s: Record<string, any>) => {
-          const rows = (att ?? []).filter((a) => a.schedule_id === s.schedule_id);
-          const c = (st: string) => rows.filter((a) => a.status === st).length;
-          const sec = secMap.get(s.section_id)!;
+        const now = Date.now();
+        const sessions = rows.map((r) => {
+          const sec = secMap.get(r.section_id)!;
           return {
-            schedule_id: s.schedule_id, class_date: s.class_date, start_time: s.start_time.slice(0, 5), end_time: s.end_time.slice(0, 5),
-            status: s.status, room: s.locations?.name, course_code: sec.course_code, course_name: sec.course_name, section_no: sec.section_no,
-            total: enrolled.get(s.section_id) ?? 0, present: c('present'), late: c('late'), absent: c('absent'), excused: c('excused'),
-            checked_out: rows.filter((a) => a.check_out_time).length,
+            schedule_id: r.schedule_id, section_id: r.section_id, class_date: r.class_date,
+            start_time: String(r.start_time).slice(0, 5), end_time: String(r.end_time).slice(0, 5), status: r.status, phase: phase(r, now),
+            room: r.room, course_code: sec.course_code, course_name: sec.course_name, section_no: sec.section_no,
+            instructor_name: sec.instructor_name, department_code: sec.department_code, department_name: sec.department_name, color: sec.color,
+            mine: sec.mine, editable: sec.editable,
+            total: r.enrolled, present: r.present, late: r.late, absent: r.absent, excused: r.excused, checked_out: r.checked_out,
           };
         });
         return json({ data: { date, sessions } });
       }
 
       case 'session': {
-        const sc = await canAccessSchedule(me, String(body.schedule_id ?? ''));
-        if (!sc) return fail('NOT_FOUND', 'ไม่พบคาบนี้ หรือไม่มีสิทธิ์ดู', 404);
+        const acc = await scheduleAccess(me, String(body.schedule_id ?? ''));
+        if (!acc) return fail('NOT_FOUND', 'ไม่พบคาบนี้ หรือไม่มีสิทธิ์ดู', 404);
+        const { sc, sec } = acc;
         const [{ data: enr }, { data: att }] = await Promise.all([
           supabase.from('section_enrollments').select('student_id, students ( student_code, users ( full_name ), face_templates ( template_id ) )').eq('section_id', sc.section_id),
           supabase.from('attendance_records')
@@ -155,12 +186,12 @@ Deno.serve(async (req: Request) => {
             } : null,
           };
         }).sort((x, y) => String(x.student_code).localeCompare(String(y.student_code)));
-        const sec = sc.lab_sections;
         return json({ data: {
           schedule: {
             schedule_id: sc.schedule_id, class_date: sc.class_date, start_time: sc.start_time.slice(0, 5), end_time: sc.end_time.slice(0, 5),
-            status: sc.status, room: sc.locations?.name, course_code: sec?.courses?.course_code, course_name: sec?.courses?.course_name,
-            section_no: sec?.section_no, late_threshold_minutes: sec?.late_threshold_minutes, section_id: sc.section_id,
+            status: sc.status, room: sc.locations?.name, course_code: sec.course_code, course_name: sec.course_name,
+            section_no: sec.section_no, late_threshold_minutes: sc.lab_sections?.late_threshold_minutes, section_id: sc.section_id,
+            instructor_name: sec.instructor_name, department_name: sec.department_name, term: sec.term, editable: sec.editable,
           },
           roster,
         } });
@@ -169,8 +200,10 @@ Deno.serve(async (req: Request) => {
       case 'mark': {
         const status = String(body.status ?? '');
         if (!STATUSES.includes(status)) return fail('BAD_REQUEST', 'สถานะไม่ถูกต้อง', 400);
-        const sc = await canAccessSchedule(me, String(body.schedule_id ?? ''));
-        if (!sc) return fail('NOT_FOUND', 'ไม่พบคาบนี้ หรือไม่มีสิทธิ์แก้', 404);
+        const acc = await scheduleAccess(me, String(body.schedule_id ?? ''));
+        if (!acc) return fail('NOT_FOUND', 'ไม่พบคาบนี้ หรือไม่มีสิทธิ์แก้', 404);
+        if (!acc.sec.editable) return fail('FORBIDDEN', 'แก้ได้เฉพาะกลุ่มเรียนที่ตัวเองสอน', 403);
+        const sc = acc.sc;
         const studentId = String(body.student_id ?? '');
         const { data: enrolled } = await supabase.from('section_enrollments').select('student_id').eq('section_id', sc.section_id).eq('student_id', studentId).maybeSingle();
         if (!enrolled) return fail('NOT_IN_SECTION', 'นักศึกษาคนนี้ไม่ได้อยู่ในกลุ่มเรียนนี้', 400);
@@ -188,22 +221,27 @@ Deno.serve(async (req: Request) => {
 
       case 'note': {
         const { data: rec } = await supabase.from('attendance_records').select('attendance_id, schedule_id').eq('attendance_id', String(body.attendance_id ?? '')).maybeSingle();
-        if (!rec || !(await canAccessSchedule(me, rec.schedule_id))) return fail('NOT_FOUND', 'ไม่พบรายการ หรือไม่มีสิทธิ์แก้', 404);
+        const acc = rec ? await scheduleAccess(me, rec.schedule_id) : null;
+        if (!rec || !acc) return fail('NOT_FOUND', 'ไม่พบรายการ หรือไม่มีสิทธิ์แก้', 404);
+        if (!acc.sec.editable) return fail('FORBIDDEN', 'แก้ได้เฉพาะกลุ่มเรียนที่ตัวเองสอน', 403);
         const note = String(body.note ?? '').trim().slice(0, 300) || null;
         const { error } = await supabase.from('attendance_records').update({ note, note_updated_at: new Date().toISOString() }).eq('attendance_id', rec.attendance_id);
         if (error) throw error;
         return json({ data: { attendance_id: rec.attendance_id, note } });
       }
 
+      // ---- แจ้งเตือน Telegram ----
       case 'notify_get': {
-        const sec = await canAccessSection(me, String(body.section_id ?? ''));
+        const sec = await sectionAccess(me, String(body.section_id ?? ''));
         if (!sec) return fail('NOT_FOUND', 'ไม่พบกลุ่มเรียน หรือไม่มีสิทธิ์', 404);
-        return json({ data: await notifySettings(sec.section_id) });
+        return json({ data: { ...(await notifySettings(sec.section_id)), editable: sec.editable } });
       }
 
       case 'notify_set': {
-        const sec = await canAccessSection(me, String(body.section_id ?? ''));
+        // { section_id, auto_absent?, chat_id?, is_active?, notify_mid?, notify_end?, title?, remove? }
+        const sec = await sectionAccess(me, String(body.section_id ?? ''));
         if (!sec) return fail('NOT_FOUND', 'ไม่พบกลุ่มเรียน หรือไม่มีสิทธิ์', 404);
+        if (!sec.editable) return fail('FORBIDDEN', 'ตั้งค่าได้เฉพาะกลุ่มเรียนที่ตัวเองสอน', 403);
         if (typeof body.auto_absent === 'boolean') {
           const { error } = await supabase.from('lab_sections').update({ auto_absent: body.auto_absent }).eq('section_id', sec.section_id);
           if (error) throw error;
@@ -229,16 +267,17 @@ Deno.serve(async (req: Request) => {
             }
           }
         }
-        return json({ data: await notifySettings(sec.section_id) });
+        return json({ data: { ...(await notifySettings(sec.section_id)), editable: true } });
       }
 
       case 'notify_send_now': {
-        const sc = await canAccessSchedule(me, String(body.schedule_id ?? ''));
-        if (!sc) return fail('NOT_FOUND', 'ไม่พบคาบนี้ หรือไม่มีสิทธิ์', 404);
+        const acc = await scheduleAccess(me, String(body.schedule_id ?? ''));
+        if (!acc) return fail('NOT_FOUND', 'ไม่พบคาบนี้ หรือไม่มีสิทธิ์', 404);
+        if (!acc.sec.editable) return fail('FORBIDDEN', 'ส่งได้เฉพาะกลุ่มเรียนที่ตัวเองสอน', 403);
         if (!hasTelegram()) return fail('NO_TOKEN', 'ยังไม่ได้ตั้งค่า Telegram bot', 500);
-        const { data: chans } = await supabase.from('telegram_channels').select('chat_id').eq('section_id', sc.section_id).eq('is_active', true);
+        const { data: chans } = await supabase.from('telegram_channels').select('chat_id').eq('section_id', acc.sc.section_id).eq('is_active', true);
         if (!chans?.length) return fail('NO_CHANNEL', 'กลุ่มเรียนนี้ยังไม่ได้เปิดแจ้งเตือน Telegram', 409);
-        const { text } = await buildSummary(supabase, sc.schedule_id, 'now');
+        const { text } = await buildSummary(supabase, acc.sc.schedule_id, 'now');
         const sent: unknown[] = [];
         for (const c of chans) {
           try { sent.push({ chat_id: c.chat_id, message_id: await tgSend(c.chat_id, text) }); }
@@ -268,6 +307,6 @@ Deno.serve(async (req: Request) => {
     }
   } catch (err) {
     console.error(err);
-    return fail('INTERNAL_ERROR', String(err), 500);
+    return fail('INTERNAL_ERROR', String((err as Error)?.message ?? err), 500);
   }
 });
