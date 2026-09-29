@@ -97,6 +97,7 @@
     <button class="tab" data-tab="dev">ทดสอบ</button>
   </div>
   <div class="model-bar" id="modelBar">กำลังโหลดโมเดลใบหน้า…</div>
+  <div id="inAppBanner" class="status warn" style="display:none;margin:0 0 14px;"></div>
 
   <!-- ===================== เช็คชื่อ ===================== -->
   <section class="panel active" id="panel-checkin">
@@ -265,7 +266,20 @@ const HELP_UNAVAILABLE = IS_IOS
   ? 'เช็คว่าเปิด <b>บริการหาตำแหน่ง</b> ใน ตั้งค่า อยู่ และเปิด Wi-Fi ไว้ (ไม่ต้องเชื่อมต่อก็ได้ ช่วยให้หาตำแหน่งในอาคารได้)'
   : 'ปัดแถบด้านบนของจอลงมา → เปิด <b>ตำแหน่ง (Location)</b> และเปิด Wi-Fi ไว้ (ไม่ต้องเชื่อมต่อก็ได้) ถ้าเป็น Android ให้เปิด <b>ความแม่นยำของตำแหน่งของ Google</b> ใน ตั้งค่า → ตำแหน่ง ด้วย';
 
+// เบราว์เซอร์ในแอป (Messenger/Facebook/LINE/Instagram) มักขอสิทธิ์ตำแหน่ง/กล้องไม่ได้ ต้องเปิดใน Chrome/Safari
+const IN_APP = /FBAN|FBAV|FB_IAB|FB4A|MESSENGER|Line\/|Instagram|KAKAOTALK|; wv\)/i.test(navigator.userAgent);
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const openExternalHtml = () => IS_ANDROID
+  ? `<a class="btn btn-primary btn-sm" style="display:inline-block;margin-top:8px;text-decoration:none;" href="intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end">เปิดใน Chrome</a><div style="margin-top:6px;">หรือแตะ <b>⋯</b> มุมขวาบน → <b>เปิดในเบราว์เซอร์</b></div>`
+  : `แตะ <b>⋯</b> หรือ <b>ไอคอนแชร์</b> → <b>เปิดใน Safari</b>`;
+if (IN_APP) {
+  const el = document.getElementById('inAppBanner');
+  el.style.display = 'block';
+  el.innerHTML = `<b>คุณกำลังเปิดผ่านเบราว์เซอร์ในแอป</b> (เช่น Messenger/LINE) ซึ่งมักใช้ตำแหน่งและกล้องไม่ได้ ให้เปิดในเบราว์เซอร์ปกติก่อน<br>${openExternalHtml()}`;
+}
+
 function locError(code) {
+  if (IN_APP) return new Error(`เบราว์เซอร์ในแอป (Messenger/LINE) ไม่ยอมให้ใช้ตำแหน่ง<br>${openExternalHtml()}`);
   if (code === 1) return new Error(`เบราว์เซอร์ยังไม่ได้รับอนุญาตให้ใช้ตำแหน่ง<br>${HELP_PERMISSION}`);
   return new Error(`หาตำแหน่งเครื่องไม่ได้<br>${HELP_UNAVAILABLE}`);
 }
