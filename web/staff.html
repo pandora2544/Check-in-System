@@ -17,6 +17,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="lib/xlsx-lite.js"></script>
+<script src="lib/xlsx-read.js"></script>
+<script src="lib/roster-import.js"></script>
 <style>
   :root{
     --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
@@ -159,6 +161,33 @@
   .srow .counts{ grid-column:1 / -1; margin-top:0; }
   .showall{ font-family:inherit; font-size:12.5px; background:none; border:none; color:var(--teal-dark); font-weight:600; cursor:pointer; padding:6px 2px 0; }
   .b-mine{ background:var(--teal-bg); color:var(--teal-dark); }
+  /* เมนูหลัก + หน้ารายชื่อ */
+  .nav{ display:flex; gap:6px; margin:0 0 12px; }
+  .nav a{ font-size:13.5px; font-weight:600; text-decoration:none; color:var(--ink-muted); padding:7px 12px; border-radius:10px; border:1px solid var(--line); background:#fff; }
+  .nav a.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .rbar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  .rbar select, .form select, .form input{ font-family:inherit; font-size:14px; padding:7px 9px; border-radius:9px; border:1px solid var(--line); background:#fff; color:var(--ink); width:auto; }
+  .secrow{ display:grid; grid-template-columns:1fr auto; gap:6px 10px; align-items:center; background:var(--surface); border:1px solid var(--line); border-left:5px solid var(--teal); border-radius:13px; padding:10px 12px; margin-bottom:8px; }
+  .secrow .t{ font-weight:700; } .secrow .m{ font-size:12.5px; color:var(--ink-muted); }
+  .secrow .acts{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .facebar{ height:5px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:5px; max-width:220px; } .facebar b{ display:block; height:100%; background:var(--teal); }
+  .form{ display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px; margin:6px 0 10px; }
+  .form label{ margin:0; font-size:12px; } .form .f{ display:flex; flex-direction:column; gap:3px; }
+  table.rt{ width:100%; border-collapse:collapse; font-size:13px; } table.rt th, table.rt td{ border-bottom:1px solid var(--line); padding:6px 6px; text-align:left; vertical-align:top; }
+  table.rt th{ font-size:12px; color:var(--ink-muted); font-weight:700; background:#fff; position:sticky; top:0; }
+  .tablewrap{ max-height:360px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+  .modal{ position:fixed; inset:0; z-index:40; background:rgba(10,20,16,.5); display:flex; align-items:flex-start; justify-content:center; overflow:auto; padding:24px 12px; }
+  .modal .box{ background:var(--paper); width:100%; max-width:760px; border-radius:16px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  .modal h3{ margin:0 0 4px; font-size:17px; } .steps{ display:flex; gap:6px; margin:8px 0 12px; font-size:12px; color:var(--ink-muted); flex-wrap:wrap; }
+  .steps span{ padding:3px 9px; border-radius:999px; background:var(--line); } .steps span.on{ background:var(--teal); color:#fff; }
+  .drop{ border:2px dashed var(--line); border-radius:14px; padding:26px 14px; text-align:center; background:#fff; cursor:pointer; }
+  .drop.over{ border-color:var(--teal); background:var(--teal-bg); }
+  .kv{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin:8px 0; }
+  .kv div{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; text-align:center; } .kv b{ display:block; font-size:19px; font-family:'IBM Plex Mono',monospace; } .kv span{ font-size:11.5px; color:var(--ink-muted); }
+  details.lst{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 10px; margin:6px 0; font-size:13px; } details.lst summary{ cursor:pointer; font-weight:600; }
+  .warnbox{ background:var(--amber-bg); color:var(--amber-ink); border-radius:10px; padding:8px 10px; font-size:13px; margin:6px 0; }
+  .okbox{ background:var(--teal-bg); color:var(--teal-dark); border-radius:10px; padding:10px 12px; font-size:14px; margin:6px 0; }
+  select.rolesel{ font-size:12px; padding:3px 4px; }
   [hidden]{ display:none !important; }
 </style>
 </head>
@@ -172,6 +201,10 @@
     <div class="who" id="who"></div>
   </header>
   <div id="pwaSlot"></div>
+  <nav class="nav" id="mainNav" hidden>
+    <a href="#cal" data-nav="cal">📅 ปฏิทินแล็บ</a>
+    <a href="#roster" data-nav="roster">👥 รายชื่อนักศึกษา</a>
+  </nav>
 
   <!-- ล็อกอิน -->
   <section id="viewLogin" hidden>
@@ -206,6 +239,45 @@
     <div class="cal" id="cal"></div>
     <div class="legend" id="calLegend"></div>
     <div class="err" id="calErr"></div>
+  </section>
+
+  <!-- รายชื่อนักศึกษารายเทอม -->
+  <section id="viewRoster" hidden>
+    <div class="rbar">
+      <label style="margin:0">เทอม</label>
+      <select id="termSel"></select>
+      <button class="btn btn-ghost btn-sm" id="btnNewTerm" hidden>+ เทอมใหม่</button>
+      <button class="btn btn-ghost btn-sm" id="btnNewSection" hidden>+ กลุ่มเรียน</button>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost btn-sm" id="btnTemplate">📄 แม่แบบไฟล์รายชื่อ</button>
+    </div>
+    <div class="form" id="termForm" hidden>
+      <div class="f"><label>ปีการศึกษา (พ.ศ.)</label><input id="tfYear" size="6" placeholder="2569"></div>
+      <div class="f"><label>ภาคเรียน</label><select id="tfTerm"><option value="1">1</option><option value="2">2</option><option value="summer">ฤดูร้อน</option></select></div>
+      <div class="f"><label>เริ่ม</label><input type="date" id="tfStart"></div>
+      <div class="f"><label>สิ้นสุด</label><input type="date" id="tfEnd"></div>
+      <button class="btn btn-primary btn-sm" id="tfSave">บันทึกเทอม</button>
+    </div>
+    <div class="form" id="secForm" hidden>
+      <div class="f"><label>วิชา</label><select id="sfCourse"></select></div>
+      <div class="f" id="sfNewCourse" hidden><label>รหัสวิชาใหม่</label><input id="sfCode" size="9" placeholder="CHM101L"></div>
+      <div class="f" id="sfNewCourse2" hidden><label>ชื่อวิชา</label><input id="sfName" size="22"></div>
+      <div class="f" id="sfNewCourse3" hidden><label>สาขา</label><select id="sfDept"></select></div>
+      <div class="f"><label>กลุ่มเรียน</label><input id="sfNo" size="4" placeholder="01"></div>
+      <div class="f"><label>อาจารย์ผู้สอน</label><select id="sfInstr"></select></div>
+      <button class="btn btn-primary btn-sm" id="sfSave">เพิ่มกลุ่มเรียน</button>
+    </div>
+    <div class="muted" id="termInfo" style="margin-bottom:8px"></div>
+    <div id="secList"></div>
+    <div class="card" id="rosterCard" hidden>
+      <div class="row"><b id="rosterTitle"></b><span class="spacer"></span>
+        <button class="btn btn-ghost btn-sm" id="btnRosterXlsx">📥 Excel</button>
+        <button class="btn btn-primary btn-sm" id="btnRosterUpload">อัปโหลดรายชื่อ</button>
+        <button class="btn btn-ghost btn-sm" id="btnRosterClose">ปิด</button></div>
+      <div class="muted" id="rosterSub" style="margin:4px 0 8px"></div>
+      <div class="tablewrap"><table class="rt" id="rosterTable"></table></div>
+    </div>
+    <div class="err" id="rosterErr"></div>
   </section>
 
   <!-- คาบทั้งหมดของวัน -->
@@ -283,6 +355,15 @@
     </div>
   </section>
 </div>
+<div class="modal" id="upModal" hidden>
+  <div class="box" role="dialog" aria-modal="true" aria-labelledby="upTitle">
+    <div class="row"><h3 id="upTitle">อัปโหลดรายชื่อ</h3><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="upClose">ปิด</button></div>
+    <div class="muted" id="upSub"></div>
+    <div class="steps" id="upSteps"><span data-s="1">1 เลือกไฟล์</span><span data-s="2">2 ตรวจคอลัมน์</span><span data-s="3">3 เทียบกับระบบ</span><span data-s="4">4 เสร็จ</span></div>
+    <div id="upBody"></div>
+    <div class="err" id="upErr"></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -308,12 +389,12 @@ const STATUS = {
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
 let me = null, mySections = [];
 
-async function staffApi(action, extra = {}) {
+async function staffApi(action, extra = {}, fn = 'staff') {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { showLogin(); throw new Error('กรุณาเข้าสู่ระบบ'); }
   let res;
   try {
-    res = await fetch(`${SUPABASE_URL}/functions/v1/staff`, {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ action, ...extra }),
@@ -325,7 +406,13 @@ async function staffApi(action, extra = {}) {
   return json.data;
 }
 
-function show(view) { ['viewLogin', 'viewCal', 'viewDay', 'viewSession'].forEach((v) => ($(v).hidden = v !== view)); window.scrollTo(0, 0); }
+function show(view) {
+  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster'].forEach((v) => ($(v).hidden = v !== view));
+  $('mainNav').hidden = view === 'viewLogin';
+  const nav = view === 'viewRoster' ? 'roster' : 'cal';
+  $('mainNav').querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.nav === nav));
+  window.scrollTo(0, 0);
+}
 function showLogin(msg) { me = null; $('who').innerHTML = ''; show('viewLogin'); $('loginErr').textContent = msg || ''; stopRefresh(); }
 
 $('loginForm').addEventListener('submit', async (e) => {
@@ -368,6 +455,7 @@ function route() {
   const [kind, arg] = location.hash.replace(/^#/, '').split('/');
   stopRefresh(); stopDayRefresh();
   if (kind === 's' && arg) return openSession(arg);
+  if (kind === 'roster') return openRoster(arg || null);
   if (kind === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '')) return openDay(arg);
   return openCal(/^\d{4}-\d{2}$/.test(arg || '') ? arg : bkkToday().slice(0, 7));
 }
@@ -904,6 +992,244 @@ $('btnSheet').addEventListener('click', async () => {
   } catch (err) { toast('สร้างไฟล์ไม่สำเร็จ: ' + err.message); }
   $('btnSheet').disabled = false;
 });
+
+// ================= รายชื่อนักศึกษารายเทอม =================
+const manageApi = (action, extra = {}) => staffApi(action, extra, 'manage');
+let boot = null, termId = null, termSections = [], openSec = null;
+const thTermLabel = (t) => t?.label || '';
+
+async function openRoster(semesterId) {
+  show('viewRoster'); $('rosterErr').textContent = '';
+  try {
+    if (!boot) boot = await manageApi('bootstrap');
+    const isAdmin = boot.user.role === 'admin';
+    $('btnNewTerm').hidden = !isAdmin; $('btnNewSection').hidden = !isAdmin;
+    if (!boot.terms.length) { $('termSel').innerHTML = ''; $('secList').innerHTML = `<div class="card muted">ยังไม่มีเทอมในระบบ${isAdmin ? ' — กด "+ เทอมใหม่"' : ' — ติดต่อแอดมิน'}</div>`; return; }
+    // ค่าเริ่มต้น: เทอมที่วันนี้อยู่ในช่วง ไม่งั้นเทอมล่าสุด
+    const today = bkkToday();
+    termId = semesterId && boot.terms.some((t) => t.semester_id === semesterId) ? semesterId
+      : (boot.terms.find((t) => t.start_date <= today && today <= t.end_date) || boot.terms[0]).semester_id;
+    $('termSel').innerHTML = boot.terms.map((t) => `<option value="${esc(t.semester_id)}">${esc(thTermLabel(t))} (${t.sections} กลุ่ม)</option>`).join('');
+    $('termSel').value = termId;
+    await loadTermSections();
+  } catch (err) { $('rosterErr').textContent = err.message; }
+}
+$('termSel').onchange = () => go(`#roster/${$('termSel').value}`);
+
+async function loadTermSections() {
+  const t = (boot?.terms || []).find((x) => x.semester_id === termId);
+  $('termInfo').textContent = t ? `${thTermLabel(t)} · ${new Date(t.start_date + 'T12:00:00+07:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })} – ${new Date(t.end_date + 'T12:00:00+07:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}` : '';
+  $('secList').innerHTML = '<div class="muted">กำลังโหลด…</div>';
+  const d = await manageApi('term_sections', { semester_id: termId });
+  termSections = d.sections;
+  assignColors(termSections.map((s) => s.course_code));
+  if (!termSections.length) { $('secList').innerHTML = `<div class="card muted">เทอมนี้ยังไม่มีกลุ่มเรียน${boot?.user.role === 'admin' ? ' — กด "+ กลุ่มเรียน"' : ''}</div>`; return; }
+  $('secList').innerHTML = termSections.map((s) => {
+    const pct = s.enrolled ? Math.round((s.face_enrolled / s.enrolled) * 100) : 0;
+    return `<div class="secrow" style="border-left-color:${courseColor(s.course_code)}">
+      <div><div class="t">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)} <span style="font-weight:500">· ${esc(s.course_name)}</span></div>
+        <div class="m">${esc(s.department_name || '')}${s.instructor_name ? ` · ${esc(s.instructor_name)}` : ' · ยังไม่ระบุผู้สอน'} · <b>${s.enrolled}</b> คน · ลงทะเบียนหน้าแล้ว ${s.face_enrolled}/${s.enrolled}</div>
+        <div class="facebar" title="ลงทะเบียนหน้าแล้ว ${pct}%"><b style="width:${pct}%"></b></div></div>
+      <div class="acts"><button class="btn btn-ghost btn-sm" data-view="${esc(s.section_id)}">ดูรายชื่อ</button>
+        ${s.editable ? `<button class="btn btn-primary btn-sm" data-up="${esc(s.section_id)}">อัปโหลด</button>` : ''}</div>
+    </div>`;
+  }).join('');
+  $('secList').querySelectorAll('[data-view]').forEach((b) => b.onclick = () => viewRoster(b.dataset.view));
+  $('secList').querySelectorAll('[data-up]').forEach((b) => b.onclick = () => openUpload(termSections.find((s) => s.section_id === b.dataset.up)));
+}
+
+async function viewRoster(sectionId) {
+  openSec = termSections.find((s) => s.section_id === sectionId);
+  $('rosterCard').hidden = false; $('rosterTable').innerHTML = '<tr><td class="muted">กำลังโหลด…</td></tr>';
+  $('rosterTitle').textContent = `${openSec.course_code} กลุ่ม ${openSec.section_no} · ${openSec.course_name}`;
+  $('btnRosterUpload').hidden = !openSec.editable;
+  $('rosterCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const d = await manageApi('roster_get', { section_id: sectionId });
+  openSec.roster = d.roster;
+  const noFace = d.roster.filter((r) => !r.face_enrolled).length;
+  $('rosterSub').innerHTML = `${d.roster.length} คน · ยังไม่ลงทะเบียนหน้า <b>${noFace}</b> คน${noFace ? ' — แจ้งให้เปิดเว็บแล้วไปที่แท็บ "ลงทะเบียนหน้า"' : ''}`;
+  $('rosterTable').innerHTML = `<thead><tr><th>#</th><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>กลุ่ม</th><th>ใบหน้า</th></tr></thead><tbody>` +
+    d.roster.map((r, i) => `<tr><td>${i + 1}</td><td class="mono">${esc(r.code)}</td><td>${esc(r.full_name)}${r.status !== 'active' ? ` <span class="pill p-warn">${esc(r.status)}</span>` : ''}</td><td>${esc(r.group ?? '')}</td><td>${r.face_enrolled ? '✅' : '<span class="muted">ยังไม่</span>'}</td></tr>`).join('') + '</tbody>';
+}
+$('btnRosterClose').onclick = () => { $('rosterCard').hidden = true; openSec = null; };
+$('btnRosterUpload').onclick = () => openSec && openUpload(openSec);
+$('btnRosterXlsx').onclick = () => {
+  if (!openSec?.roster) return;
+  const H = { font: { b: true }, border: 'thin', fill: 'EDEDED', h: 'center' }, C = { border: 'thin' };
+  const rows = [{ cells: [{ v: `รายชื่อ ${openSec.course_code} กลุ่ม ${openSec.section_no} · ${openSec.course_name} · ภาคเรียน ${openSec.term}`, s: { font: { b: true, sz: 16 } } }] }, { cells: [] },
+    { cells: ['ที่', 'รหัสนักศึกษา', 'ชื่อ-นามสกุล', 'กลุ่ม', 'ลงทะเบียนหน้า'].map((v) => ({ v, s: H })) },
+    ...openSec.roster.map((r, i) => ({ cells: [i + 1, r.code, r.full_name, r.group ?? '', r.face_enrolled ? 'แล้ว' : 'ยัง'].map((v, j) => ({ v, s: j === 2 ? C : { ...C, h: 'center' } })) }))];
+  XlsxLite.download(XlsxLite.build([{ name: `${openSec.course_code}-${openSec.section_no}`, cols: [5, 14, 32, 7, 13], rows, merges: ['A1:E1'], printTitleRows: '3:3' }]), `รายชื่อ_${openSec.course_code}-${openSec.section_no}_${openSec.term?.replace('/', '-')}.xlsx`);
+};
+$('btnTemplate').onclick = () => {
+  const H = { font: { b: true }, border: 'thin', fill: 'EDEDED', h: 'center' };
+  const ex = [['66010001', 'นางสาว', 'กมลชนก', 'ศรีสุข', '1'], ['66010002', 'นาย', 'ธนากร', 'วงศ์ใหญ่', '1'], ['66010003', 'นางสาว', 'ปิยะธิดา', 'แก้วมณี', '2']];
+  const rows = [{ cells: [{ v: 'รายชื่อนักศึกษา — ลบแถวตัวอย่างแล้วใส่รายชื่อจริง (แถวหัวตารางเปลี่ยนตำแหน่งได้ ระบบหาเอง)', s: { font: { i: true, color: '666666' } } }] },
+    { cells: ['รหัสนักศึกษา', 'คำนำหน้า', 'ชื่อ', 'นามสกุล', 'กลุ่ม'].map((v) => ({ v, s: H })) },
+    ...ex.map((r) => ({ cells: r.map((v) => ({ v, s: { border: 'thin' } })) }))];
+  XlsxLite.download(XlsxLite.build([{ name: 'รายชื่อ', cols: [15, 10, 18, 18, 8], rows }], { font: { name: 'TH Sarabun New', sz: 16 } }), 'แม่แบบรายชื่อนักศึกษา.xlsx');
+};
+
+// ---- เพิ่มเทอม / กลุ่มเรียน (แอดมิน) ----
+$('btnNewTerm').onclick = () => { $('termForm').hidden = !$('termForm').hidden; $('secForm').hidden = true; };
+$('tfSave').onclick = async () => {
+  try {
+    const t = await manageApi('term_save', { academic_year: $('tfYear').value.trim(), term: $('tfTerm').value, start_date: $('tfStart').value, end_date: $('tfEnd').value });
+    boot = null; toast('บันทึกเทอมแล้ว'); $('termForm').hidden = true; go(`#roster/${t.semester_id}`);
+  } catch (err) { toast(err.message); }
+};
+$('btnNewSection').onclick = () => {
+  $('secForm').hidden = !$('secForm').hidden; $('termForm').hidden = true;
+  $('sfCourse').innerHTML = boot.courses.map((c) => `<option value="${esc(c.course_id)}">${esc(c.course_code)} ${esc(c.course_name)}</option>`).join('') + '<option value="__new">+ วิชาใหม่…</option>';
+  $('sfDept').innerHTML = '<option value="">— ไม่ระบุ —</option>' + boot.departments.map((d) => `<option value="${esc(d.department_id)}">${esc(d.name)}</option>`).join('');
+  $('sfInstr').innerHTML = '<option value="">— ยังไม่ระบุ —</option>' + boot.instructors.map((u) => `<option value="${esc(u.user_id)}">${esc(u.full_name)}</option>`).join('');
+  $('sfCourse').onchange();
+};
+$('sfCourse').onchange = () => { const n = $('sfCourse').value === '__new'; ['sfNewCourse', 'sfNewCourse2', 'sfNewCourse3'].forEach((id) => ($(id).hidden = !n)); };
+$('sfSave').onclick = async () => {
+  try {
+    let courseId = $('sfCourse').value;
+    if (courseId === '__new') courseId = (await manageApi('course_save', { course_code: $('sfCode').value, course_name: $('sfName').value, department_id: $('sfDept').value || null })).course_id;
+    await manageApi('section_save', { course_id: courseId, semester_id: termId, section_no: $('sfNo').value.trim(), instructor_id: $('sfInstr').value || null });
+    boot = null; toast('เพิ่มกลุ่มเรียนแล้ว'); $('secForm').hidden = true; openRoster(termId);
+  } catch (err) { toast(err.message); }
+};
+
+// ---- ตัวช่วยอัปโหลด (4 ขั้น) ----
+let up = null;
+function upStep(n) { $('upSteps').querySelectorAll('span').forEach((x) => x.classList.toggle('on', Number(x.dataset.s) === n)); $('upErr').textContent = ''; }
+function closeUpload() { $('upModal').hidden = true; up = null; document.body.style.overflow = ''; }
+$('upClose').onclick = closeUpload;
+$('upModal').addEventListener('click', (e) => { if (e.target === $('upModal')) closeUpload(); });
+
+function openUpload(sec) {
+  up = { sec, file: null, sheets: [], sheetIdx: 0, det: null, includePrefix: true, sectionValue: null, removeMissing: false, rows: [], skipped: [], preview: null };
+  $('upTitle').textContent = `อัปโหลดรายชื่อ ${sec.course_code} กลุ่ม ${sec.section_no}`;
+  $('upSub').textContent = `${sec.course_name} · ภาคเรียน ${sec.term} · ตอนนี้มี ${sec.enrolled ?? '?'} คน`;
+  $('upModal').hidden = false; document.body.style.overflow = 'hidden';
+  upStep(1);
+  $('upBody').innerHTML = `<label class="drop" id="upDrop"><input type="file" id="upFile" accept=".xlsx,.csv,.txt" hidden>
+      <div style="font-size:30px">📄</div><b>เลือกไฟล์ Excel (.xlsx) หรือ CSV</b><div class="muted">หรือลากไฟล์มาวางที่นี่ · ไฟล์ไม่ถูกอัปโหลดขึ้นเซิร์ฟเวอร์ ระบบอ่านในเครื่องแล้วส่งแค่รหัส/ชื่อ/กลุ่ม</div></label>
+    <div class="muted" style="margin-top:8px">ต้องมีคอลัมน์ <b>รหัสนักศึกษา</b> และ <b>ชื่อ</b> (ชื่อ-นามสกุลช่องเดียว หรือแยกชื่อ/นามสกุล/คำนำหน้าก็ได้) · ถ้ามีคอลัมน์ <b>กลุ่ม</b> จะใช้เป็นกลุ่มทำงานในแล็บ · ไม่แน่ใจกด "📄 แม่แบบไฟล์รายชื่อ"</div>`;
+  const drop = $('upDrop');
+  $('upFile').onchange = () => $('upFile').files[0] && loadFile($('upFile').files[0]);
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+}
+
+async function loadFile(file) {
+  try {
+    const { sheets } = await XlsxRead.read(file);
+    const usable = sheets.filter((s) => s.rows.some((r) => r?.length));
+    if (!usable.length) throw new Error('ไฟล์ว่าง');
+    up.file = file; up.sheets = usable;
+    // เลือกชีตแรกที่เจอคอลัมน์รหัส
+    up.sheetIdx = Math.max(0, usable.findIndex((s) => RosterImport.detect(s.rows).roles.includes('code')));
+    detectSheet(); renderMapping();
+  } catch (err) { $('upErr').textContent = err.message; }
+}
+function detectSheet() {
+  const sh = up.sheets[up.sheetIdx];
+  up.det = RosterImport.detect(sh.rows);
+  const secs = RosterImport.sectionValues(sh.rows, up.det);
+  up.sections = secs;
+  up.sectionValue = secs.length > 1 ? (secs.find((v) => v.replace(/^0+/, '') === String(up.sec.section_no).replace(/^0+/, '')) ?? '') : null;
+}
+function rebuild() { const b = RosterImport.build(up.sheets[up.sheetIdx].rows, up.det, { includePrefix: up.includePrefix, sectionValue: up.sectionValue }); up.rows = b.rows; up.skipped = b.skipped; }
+
+function renderMapping() {
+  upStep(2); rebuild();
+  const sh = up.sheets[up.sheetIdx], det = up.det;
+  const has = (r) => det.roles.includes(r);
+  const okName = has('full') || has('first') || has('last');
+  const sample = sh.rows.slice(det.headerRow + 1).filter((r) => r?.some((c) => String(c).trim())).slice(0, 3);
+  const cols = Array.from({ length: det.width }, (_, c) => c).filter((c) => det.roles[c] !== 'ignore' || (det.headers[c] || sample.some((r) => String(r[c] ?? '').trim())));
+  const roleSel = (c) => `<select class="rolesel" data-col="${c}">${Object.entries(RosterImport.ROLES).map(([k, v]) => `<option value="${k}" ${det.roles[c] === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+  const colName = (c) => XlsxLite.colName(c);
+  $('upBody').innerHTML = `
+    <div class="row" style="margin-bottom:8px">
+      <span>📄 <b>${esc(up.file.name)}</b></span>
+      ${up.sheets.length > 1 ? `<label style="margin:0">ชีต</label><select id="upSheet" class="rolesel" style="font-size:13px">${up.sheets.map((s, i) => `<option value="${i}" ${i === up.sheetIdx ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : ''}
+      <span class="muted">${det.headerRow >= 0 ? `หัวตารางอยู่แถวที่ ${det.headerRow + 1}` : 'ไม่พบหัวตาราง — เดาจากข้อมูล'}</span>
+      <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="upOther">เลือกไฟล์อื่น</button>
+    </div>
+    <div class="muted" style="margin-bottom:4px">ตรวจว่าแต่ละคอลัมน์ถูกต้อง (เปลี่ยนได้)</div>
+    <div class="tablewrap" style="max-height:220px"><table class="rt"><thead><tr>${cols.map((c) => `<th>${colName(c)}${det.headers[c] ? ` · ${esc(det.headers[c])}` : ''}<br>${roleSel(c)}</th>`).join('')}</tr></thead>
+      <tbody>${sample.map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="row" style="margin:10px 0 4px; gap:14px">
+      <label class="ck" style="margin:0"><input type="checkbox" id="upPrefix" ${up.includePrefix ? 'checked' : ''}> ใส่คำนำหน้าชื่อ (นาย/นางสาว)</label>
+      ${up.sections.length > 1 ? `<label style="margin:0">ไฟล์มีหลายกลุ่มเรียน — ใช้เฉพาะกลุ่ม</label><select id="upSecVal" class="rolesel" style="font-size:13px"><option value="">ทั้งหมด</option>${up.sections.map((v) => `<option ${v === up.sectionValue ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>` : ''}
+    </div>
+    ${!has('code') ? '<div class="warnbox">ยังไม่ได้เลือกคอลัมน์ <b>รหัสนักศึกษา</b></div>' : ''}
+    ${!okName ? '<div class="warnbox">ยังไม่ได้เลือกคอลัมน์ <b>ชื่อ</b></div>' : ''}
+    <div class="kv"><div><b>${up.rows.length}</b><span>คนที่จะนำเข้า</span></div><div><b>${up.skipped.length}</b><span>แถวที่ข้าม (ไม่มีรหัส)</span></div></div>
+    ${up.rows.length ? `<details class="lst"><summary>ตัวอย่างที่ระบบอ่านได้ (${Math.min(5, up.rows.length)} แถวแรก)</summary>${up.rows.slice(0, 5).map((r) => `<div><span class="mono">${esc(r.code)}</span> ${esc(r.full_name)}${r.group ? ` · กลุ่ม ${esc(r.group)}` : ''}</div>`).join('')}</details>` : ''}
+    ${up.skipped.length ? `<details class="lst"><summary>แถวที่ข้าม</summary>${up.skipped.slice(0, 20).map((x) => `<div>แถว ${x.line}: ${esc(x.text || '(ว่าง)')}</div>`).join('')}</details>` : ''}
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn btn-primary" id="upCheck" ${has('code') && okName && up.rows.length ? '' : 'disabled'}>ตรวจกับข้อมูลในระบบ →</button></div>`;
+  $('upOther').onclick = () => openUpload(up.sec);
+  if ($('upSheet')) $('upSheet').onchange = () => { up.sheetIdx = Number($('upSheet').value); detectSheet(); renderMapping(); };
+  $('upPrefix').onchange = () => { up.includePrefix = $('upPrefix').checked; renderMapping(); };
+  if ($('upSecVal')) $('upSecVal').onchange = () => { up.sectionValue = $('upSecVal').value; renderMapping(); };
+  $('upBody').querySelectorAll('select[data-col]').forEach((sel) => sel.onchange = () => {
+    const c = Number(sel.dataset.col), role = sel.value;
+    if (role !== 'ignore') up.det.roles = up.det.roles.map((r) => (r === role ? 'ignore' : r)); // บทบาทละ 1 คอลัมน์
+    up.det.roles[c] = role;
+    up.sections = RosterImport.sectionValues(up.sheets[up.sheetIdx].rows, up.det);
+    renderMapping();
+  });
+  $('upCheck').onclick = () => runPreview();
+}
+
+const payloadRows = () => up.rows.map(({ code, full_name, group }) => ({ code, full_name, group }));
+async function runPreview() {
+  $('upCheck') && ($('upCheck').disabled = true);
+  try {
+    up.preview = await manageApi('roster_preview', { section_id: up.sec.section_id, rows: payloadRows(), remove_missing: up.removeMissing });
+    renderPreview();
+  } catch (err) { $('upErr').textContent = err.message; if ($('upCheck')) $('upCheck').disabled = false; }
+}
+function renderPreview() {
+  upStep(3);
+  const p = up.preview;
+  const list = (arr, f, max = 50) => arr.slice(0, max).map(f).join('') + (arr.length > max ? `<div class="muted">…และอีก ${arr.length - max}</div>` : '');
+  $('upBody').innerHTML = `
+    <div class="kv">
+      <div><b>${p.total}</b><span>คนในไฟล์</span></div>
+      <div><b style="color:var(--teal-dark)">${p.new_students.length}</b><span>นักศึกษาใหม่ (สร้างในระบบ)</span></div>
+      <div><b>${p.to_enroll}</b><span>เพิ่มเข้ากลุ่มเรียนนี้</span></div>
+      <div><b>${p.already}</b><span>อยู่ในกลุ่มแล้ว</span></div>
+      <div><b style="color:var(--amber-ink)">${p.name_changes.length}</b><span>ชื่อเปลี่ยน</span></div>
+      <div><b style="color:var(--brick)">${p.missing.length}</b><span>อยู่ในระบบแต่ไม่มีในไฟล์</span></div>
+    </div>
+    ${p.invalid.length ? `<div class="err" style="display:block">มี ${p.invalid.length} แถวที่ไม่ถูกต้อง — แก้ในไฟล์แล้วอัปโหลดใหม่ (ไม่นำเข้าจนกว่าจะแก้)${list(p.invalid, (x) => `<div>แถวข้อมูลที่ ${x.row}: <span class="mono">${esc(x.code)}</span> — ${esc(x.reason)}</div>`, 20)}</div>` : ''}
+    ${p.new_students.length ? `<details class="lst"><summary>นักศึกษาใหม่ ${p.new_students.length} คน</summary>${list(p.new_students, (r) => `<div><span class="mono">${esc(r.code)}</span> ${esc(r.full_name)}</div>`)}</details>` : ''}
+    ${p.name_changes.length ? `<details class="lst" open><summary>ชื่อจะถูกอัปเดต ${p.name_changes.length} คน</summary>${list(p.name_changes, (r) => `<div><span class="mono">${esc(r.code)}</span> ${esc(r.old)} → <b>${esc(r.new)}</b></div>`)}</details>` : ''}
+    ${p.group_changes.length ? `<details class="lst"><summary>กลุ่มทำงานเปลี่ยน ${p.group_changes.length} คน</summary>${list(p.group_changes, (r) => `<div><span class="mono">${esc(r.code)}</span> ${esc(r.old ?? '—')} → ${esc(r.new ?? '—')}</div>`)}</details>` : ''}
+    ${p.inactive.length ? `<div class="warnbox">${p.inactive.length} คนสถานะไม่ใช่ "ปกติ" (เช่น พ้นสภาพ/ลาพัก) — จะถูกเพิ่มเข้ากลุ่มตามไฟล์</div>` : ''}
+    ${p.missing.length ? `<div class="warnbox"><label class="ck" style="margin:0;color:inherit"><input type="checkbox" id="upRemove" ${up.removeMissing ? 'checked' : ''}> เอา ${p.missing.length} คนที่ไม่มีในไฟล์ออกจากกลุ่มเรียนนี้ (เช่น ถอนรายวิชา)</label>
+        <div style="font-size:12px;margin-top:4px">ประวัติเช็คชื่อเดิมไม่ถูกลบ · ถ้าไม่ติ๊ก = เพิ่มอย่างเดียว</div>
+        ${list(p.missing, (m) => `<div><span class="mono">${esc(m.code)}</span> ${esc(m.full_name)}${m.has_attendance ? ' · <b>มีประวัติเช็คชื่อแล้ว</b>' : ''}</div>`, 30)}</div>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn btn-ghost" id="upBack">← แก้คอลัมน์</button><span class="spacer"></span>
+      <button class="btn btn-primary" id="upGo" ${p.invalid.length || !p.total ? 'disabled' : ''}>นำเข้า ${p.total} คน</button></div>`;
+  $('upBack').onclick = () => renderMapping();
+  if ($('upRemove')) $('upRemove').onchange = () => { up.removeMissing = $('upRemove').checked; runPreview(); };
+  $('upGo').onclick = async () => {
+    $('upGo').disabled = true; $('upGo').textContent = 'กำลังนำเข้า…';
+    try {
+      const r = await manageApi('roster_import', { section_id: up.sec.section_id, rows: payloadRows(), remove_missing: up.removeMissing });
+      upStep(4);
+      $('upBody').innerHTML = `<div class="okbox">✅ นำเข้าเรียบร้อย — ${up.sec.course_code} กลุ่ม ${up.sec.section_no}</div>
+        <div class="kv"><div><b>${r.created}</b><span>สร้างนักศึกษาใหม่</span></div><div><b>${r.enrolled}</b><span>เพิ่มเข้ากลุ่ม</span></div>
+          <div><b>${r.renamed}</b><span>อัปเดตชื่อ</span></div><div><b>${r.groups_updated}</b><span>อัปเดตกลุ่มทำงาน</span></div><div><b>${r.removed}</b><span>เอาออก</span></div></div>
+        ${r.failed.length ? `<div class="err" style="display:block">ไม่สำเร็จ ${r.failed.length} คน${r.failed.map((f) => `<div>${esc(f.code)}: ${esc(f.error)}</div>`).join('')}</div>` : ''}
+        <div class="muted">นักศึกษาใหม่ต้องลงทะเบียนใบหน้าครั้งแรกที่หน้าเว็บ (แท็บ "ลงทะเบียนหน้า") · คนที่เคยลงทะเบียนหน้าแล้วใช้ได้เลย</div>
+        <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn btn-primary" id="upDone">ดูรายชื่อ</button></div>`;
+      const sid = up.sec.section_id;
+      $('upDone').onclick = async () => { closeUpload(); await loadTermSections(); viewRoster(sid); };
+    } catch (err) { $('upErr').textContent = err.message; $('upGo').disabled = false; $('upGo').textContent = 'ลองอีกครั้ง'; }
+  };
+}
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && current) refreshSession(true); });
 
