@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#294F40">
+<title>CPH Check-in — อาจารย์</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
+    --teal:#3C6E58; --teal-dark:#294F40; --teal-bg:#E7F0EA;
+    --amber:#C68A2E; --amber-bg:#FBF1DE; --amber-ink:#7A5A1E;
+    --brick:#B23A2E; --brick-bg:#FBEAE7; --brick-ink:#7C2A21;
+    --blue:#2F5F8F; --blue-bg:#E6EEF7;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ background:var(--paper); font-family:'IBM Plex Sans Thai',sans-serif; color:var(--ink); padding:0 16px 60px; }
+  .wrap{ max-width:880px; margin:0 auto; }
+  header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 0 12px; }
+  header h1{ font-size:18px; margin:0; }
+  header .who{ font-size:12.5px; color:var(--ink-muted); text-align:right; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:12px; }
+  label{ font-size:12.5px; color:var(--ink-muted); font-weight:600; display:block; margin:0 0 4px; }
+  input, textarea{ font-family:inherit; font-size:16px; padding:10px 12px; border-radius:10px; border:1px solid var(--line); width:100%; background:#fff; color:var(--ink); }
+  .btn{ font-family:inherit; font-size:14.5px; font-weight:600; padding:11px 16px; border-radius:11px; border:none; cursor:pointer; }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-ghost{ background:transparent; border:1.3px solid var(--line); color:var(--ink); }
+  .btn-sm{ font-size:13px; padding:7px 11px; border-radius:9px; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .muted{ color:var(--ink-muted); font-size:12.5px; }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  .err{ background:var(--brick-bg); color:var(--brick-ink); padding:10px 12px; border-radius:10px; font-size:13.5px; margin-top:10px; }
+  .err:empty{ display:none; }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .spacer{ flex:1; }
+  .datebar{ display:flex; gap:6px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .datebar input{ width:auto; padding:7px 10px; font-size:15px; }
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ font-family:inherit; font-size:12.5px; font-weight:600; padding:6px 11px; border-radius:999px; border:1px solid var(--line); background:#fff; color:var(--ink-muted); cursor:pointer; }
+  .chip.on{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .sess{ display:block; width:100%; text-align:left; font-family:inherit; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:8px; cursor:pointer; color:var(--ink); }
+  .sess:hover{ border-color:var(--teal); }
+  .sess.live{ border:2px solid var(--teal); }
+  .sess .top{ display:flex; gap:8px; align-items:baseline; }
+  .sess .time{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px; }
+  .sess .title{ font-weight:600; font-size:14.5px; }
+  .sess .meta{ font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
+  .bar{ display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--line); margin-top:8px; }
+  .bar i{ display:block; height:100%; }
+  .c-present{ background:#3C8C65; } .c-late{ background:var(--amber); } .c-excused{ background:var(--blue); } .c-absent{ background:var(--brick); }
+  .counts{ font-size:12px; color:var(--ink-muted); margin-top:5px; display:flex; gap:10px; flex-wrap:wrap; }
+  .badge{ font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .b-live{ background:var(--teal); color:#fff; } .b-done{ background:var(--line); color:var(--ink-muted); } .b-soon{ background:var(--amber-bg); color:var(--amber-ink); }
+  .b-cancel{ background:var(--brick-bg); color:var(--brick-ink); }
+  .tiles{ display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin:10px 0 4px; }
+  .tile{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:8px 6px; text-align:center; }
+  .tile b{ display:block; font-size:20px; font-family:'IBM Plex Mono',monospace; }
+  .tile span{ font-size:11.5px; color:var(--ink-muted); }
+  @media (max-width:560px){ .tiles{ grid-template-columns:repeat(3,1fr); } }
+  .stu{ border-top:1px solid var(--line); padding:10px 0; display:grid; grid-template-columns:1fr auto; gap:6px 10px; }
+  .stu:first-child{ border-top:none; }
+  .stu .name{ font-weight:600; font-size:14.5px; }
+  .stu .sub{ font-size:12px; color:var(--ink-muted); margin-top:2px; line-height:1.5; }
+  .pill{ display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; }
+  .p-none{ background:var(--line); color:var(--ink-muted); } .p-present{ background:var(--teal-bg); color:var(--teal-dark); }
+  .p-late{ background:var(--amber-bg); color:var(--amber-ink); } .p-excused{ background:var(--blue-bg); color:var(--blue); }
+  .p-absent{ background:var(--brick-bg); color:var(--brick-ink); } .p-warn{ background:#fff; border:1px solid var(--amber); color:var(--amber-ink); }
+  .seg{ display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .seg button{ font-family:inherit; font-size:12.5px; font-weight:600; border:none; background:#fff; color:var(--ink-muted); padding:7px 9px; cursor:pointer; border-left:1px solid var(--line); }
+  .seg button:first-child{ border-left:none; }
+  .seg button.on.s-present{ background:#3C8C65; color:#fff; } .seg button.on.s-late{ background:var(--amber); color:#fff; }
+  .seg button.on.s-excused{ background:var(--blue); color:#fff; } .seg button.on.s-absent{ background:var(--brick); color:#fff; }
+  .actions{ grid-column:1 / -1; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .note-edit{ grid-column:1 / -1; display:none; gap:6px; }
+  .note-edit.open{ display:flex; }
+  .note-edit textarea{ font-size:14px; min-height:44px; padding:7px 10px; }
+  .toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 16px; border-radius:12px; font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:9; }
+  .toast.show{ opacity:.95; }
+  .live-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:#16a34a; margin-right:5px; animation:pulse 1.6s infinite; }
+  @keyframes pulse{ 50%{ opacity:.3; } }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>เช็คชื่อ — หน้าอาจารย์</h1>
+      <div class="muted">ดูการเข้าเรียนสด · เช็คชื่อแทน · แก้สถานะ</div>
+    </div>
+    <div class="who" id="who"></div>
+  </header>
+
+  <!-- ล็อกอิน -->
+  <section id="viewLogin" hidden>
+    <div class="card" style="max-width:420px;margin:24px auto;">
+      <h2 style="font-size:16px;margin:0 0 12px;">เข้าสู่ระบบ</h2>
+      <form id="loginForm">
+        <label for="email">อีเมล</label>
+        <input id="email" type="email" autocomplete="username" required>
+        <div style="height:10px"></div>
+        <label for="password">รหัสผ่าน</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <div style="height:14px"></div>
+        <button class="btn btn-primary" style="width:100%" id="btnLogin">เข้าสู่ระบบ</button>
+      </form>
+      <div class="err" id="loginErr"></div>
+      <p class="muted" style="margin:12px 0 0;">สำหรับอาจารย์และผู้ดูแลระบบเท่านั้น — นักศึกษาใช้หน้า<a href="./">เช็คชื่อ</a></p>
+    </div>
+  </section>
+
+  <!-- รายการคาบ -->
+  <section id="viewList" hidden>
+    <div class="datebar">
+      <button class="btn btn-ghost btn-sm" id="prevDay" aria-label="วันก่อนหน้า">◀</button>
+      <input type="date" id="date">
+      <button class="btn btn-ghost btn-sm" id="nextDay" aria-label="วันถัดไป">▶</button>
+      <button class="btn btn-ghost btn-sm" id="today">วันนี้</button>
+      <span class="spacer"></span>
+      <div class="chips" id="rangeChips">
+        <button class="chip on" data-range="now">ช่วงนี้</button>
+        <button class="chip" data-range="all">ทั้งวัน</button>
+      </div>
+    </div>
+    <div id="sessList"></div>
+    <div class="err" id="listErr"></div>
+  </section>
+
+  <!-- รายละเอียดคาบ -->
+  <section id="viewSession" hidden>
+    <div class="row" style="margin-bottom:8px;">
+      <button class="btn btn-ghost btn-sm" id="back">← รายการคาบ</button>
+      <span class="spacer"></span>
+      <span class="muted" id="liveInfo"></span>
+    </div>
+    <div class="card">
+      <div id="sessHead"></div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <div class="card">
+      <div class="row" style="margin-bottom:6px;">
+        <div class="chips" id="rosterChips">
+          <button class="chip on" data-f="all">ทั้งหมด</button>
+          <button class="chip" data-f="none">ยังไม่เช็ค</button>
+          <button class="chip" data-f="late">สาย</button>
+          <button class="chip" data-f="off">ขาด/ลา</button>
+          <button class="chip" data-f="noout">ยังไม่สแกนออก</button>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost btn-sm" id="markAbsentAll" hidden>ให้คนที่ยังไม่เช็ค = ขาด</button>
+      </div>
+      <div id="roster"></div>
+      <div class="err" id="sessErr"></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://rpaqvrpuhdadhirzrlrf.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_7-DkUmIUpoEIWYf8Ig4BZQ_hexd81bR';
+const REFRESH_MS = 15000;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtTime = (iso) => (iso ? new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '');
+const bkkToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+const bkkTs = (date, hhmm) => Date.parse(`${date}T${hhmm}:00+07:00`);
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200); }
+
+const STATUS = {
+  present: { label: 'มา', long: 'มาปกติ', cls: 'present' },
+  late: { label: 'สาย', long: 'มาสาย', cls: 'late' },
+  excused: { label: 'ลา', long: 'ลา', cls: 'excused' },
+  absent: { label: 'ขาด', long: 'ขาด', cls: 'absent' },
+};
+
+// ---- Supabase Auth (เก็บเซสชันในเบราว์เซอร์ ต่ออายุ token อัตโนมัติ) ----
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
+let me = null;
+
+async function staffApi(action, extra = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { showLogin(); throw new Error('กรุณาเข้าสู่ระบบ'); }
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/staff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ action, ...extra }),
+    });
+  } catch { throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — เช็คอินเทอร์เน็ต'); }
+  const json = await res.json().catch(() => ({}));
+  if (res.status === 401) { await sb.auth.signOut(); showLogin(json.error?.message); throw new Error(json.error?.message || 'กรุณาเข้าสู่ระบบ'); }
+  if (!res.ok) throw new Error(json.error?.message || 'เกิดข้อผิดพลาด');
+  return json.data;
+}
+
+function show(view) { ['viewLogin', 'viewList', 'viewSession'].forEach((v) => ($(v).hidden = v !== view)); }
+function showLogin(msg) { me = null; $('who').innerHTML = ''; show('viewLogin'); $('loginErr').textContent = msg || ''; stopRefresh(); }
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('btnLogin').disabled = true; $('loginErr').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
+  $('btnLogin').disabled = false;
+  if (error) { $('loginErr').textContent = error.message === 'Invalid login credentials' ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' : error.message; return; }
+  $('password').value = '';
+  start();
+});
+
+async function start() {
+  try {
+    const d = await staffApi('me');
+    me = d.user;
+    $('who').innerHTML = `<b>${esc(me.full_name)}</b><br>${me.role === 'admin' ? 'ผู้ดูแลระบบ' : 'อาจารย์'} · ${d.sections.length} กลุ่มเรียน · <a href="#" id="logout">ออกจากระบบ</a>`;
+    $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); showLogin(); });
+    if (!$('date').value) $('date').value = bkkToday();
+    show('viewList');
+    loadSessions();
+  } catch (err) {
+    if (me === null && !$('viewLogin').hidden) return;
+    $('loginErr').textContent = err.message; show('viewLogin');
+  }
+}
+
+// ---- รายการคาบ ----
+let range = 'now';
+$('rangeChips').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  range = b.dataset.range;
+  $('rangeChips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === b));
+  loadSessions();
+});
+function shiftDay(n) { const d = new Date(`${$('date').value}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); $('date').value = d.toISOString().slice(0, 10); loadSessions(); }
+$('prevDay').onclick = () => shiftDay(-1);
+$('nextDay').onclick = () => shiftDay(1);
+$('today').onclick = () => { $('date').value = bkkToday(); loadSessions(); };
+$('date').addEventListener('change', loadSessions);
+
+function sessState(s) {
+  const now = Date.now(), st = bkkTs(s.class_date, s.start_time), en = bkkTs(s.class_date, s.end_time);
+  if (s.status === 'cancelled') return { key: 'cancel', label: 'ยกเลิก', cls: 'b-cancel' };
+  if (now < st) return { key: 'soon', label: 'ยังไม่เริ่ม', cls: 'b-soon' };
+  if (now <= en) return { key: 'live', label: 'กำลังเรียน', cls: 'b-live' };
+  return { key: 'done', label: 'จบแล้ว', cls: 'b-done' };
+}
+
+async function loadSessions() {
+  $('listErr').textContent = '';
+  $('sessList').innerHTML = '<div class="muted">กำลังโหลด…</div>';
+  try {
+    const d = await staffApi('sessions', { date: $('date').value });
+    let list = d.sessions;
+    const isToday = d.date === bkkToday();
+    if (range === 'now' && isToday) {
+      const now = Date.now();
+      list = list.filter((s) => bkkTs(s.class_date, s.end_time) >= now - 2 * 3600e3 && bkkTs(s.class_date, s.start_time) <= now + 3 * 3600e3);
+    }
+    $('rangeChips').hidden = !isToday;
+    if (!list.length) {
+      $('sessList').innerHTML = `<div class="card muted">${d.sessions.length ? 'ไม่มีคาบในช่วงนี้ — กด "ทั้งวัน" เพื่อดูทั้งหมด' : 'ไม่มีคาบเรียนในวันนี้'}</div>`;
+      return;
+    }
+    $('sessList').innerHTML = list.map((s) => {
+      const st = sessState(s);
+      const done = s.present + s.late + s.excused + s.absent, none = Math.max(0, s.total - done);
+      const w = (n) => (s.total ? (n / s.total) * 100 : 0);
+      return `<button class="sess ${st.key === 'live' ? 'live' : ''}" data-id="${esc(s.schedule_id)}">
+        <div class="top"><span class="time">${esc(s.start_time)}–${esc(s.end_time)}</span><span class="title">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)}</span><span class="spacer"></span><span class="badge ${st.cls}">${st.label}</span></div>
+        <div class="meta">${esc(s.course_name)} · ${esc(s.room)}</div>
+        <div class="bar"><i class="c-present" style="width:${w(s.present)}%"></i><i class="c-late" style="width:${w(s.late)}%"></i><i class="c-excused" style="width:${w(s.excused)}%"></i><i class="c-absent" style="width:${w(s.absent)}%"></i></div>
+        <div class="counts"><span>มา ${s.present}</span><span>สาย ${s.late}</span><span>ลา ${s.excused}</span><span>ขาด ${s.absent}</span><span>ยังไม่เช็ค ${none}</span><span>ออกแล้ว ${s.checked_out}</span><span>รวม ${s.total} คน</span></div>
+      </button>`;
+    }).join('');
+    $('sessList').querySelectorAll('.sess').forEach((b) => b.addEventListener('click', () => openSession(b.dataset.id)));
+  } catch (err) {
+    $('sessList').innerHTML = ''; $('listErr').textContent = err.message;
+  }
+}
+
+// ---- รายละเอียดคาบ ----
+let current = null, rosterFilter = 'all', refreshTimer = null;
+$('back').onclick = () => { stopRefresh(); current = null; show('viewList'); loadSessions(); };
+$('rosterChips').addEventListener('click', (e) => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  rosterFilter = b.dataset.f;
+  $('rosterChips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === b));
+  renderRoster();
+});
+function stopRefresh() { clearInterval(refreshTimer); refreshTimer = null; $('liveInfo').innerHTML = ''; }
+
+async function openSession(id) {
+  show('viewSession'); $('sessErr').textContent = '';
+  $('sessHead').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('tiles').innerHTML = ''; $('roster').innerHTML = '';
+  current = { id, data: null };
+  await refreshSession();
+  stopRefresh();
+  refreshTimer = setInterval(() => { if (!document.hidden && !editing) refreshSession(true); }, REFRESH_MS);
+}
+
+let editing = false;
+async function refreshSession(silent = false) {
+  if (!current) return;
+  try {
+    const d = await staffApi('session', { schedule_id: current.id });
+    if (!current || current.id !== d.schedule.schedule_id) return;
+    current.data = d;
+    renderHead(); renderRoster();
+    const st = sessState(d.schedule);
+    $('liveInfo').innerHTML = st.key === 'live' ? `<span class="live-dot"></span>อัปเดตอัตโนมัติทุก ${REFRESH_MS / 1000} วิ · ${fmtTime(new Date().toISOString())}` : `อัปเดตล่าสุด ${fmtTime(new Date().toISOString())}`;
+  } catch (err) {
+    if (!silent) $('sessErr').textContent = err.message;
+  }
+}
+
+function counts(roster) {
+  const c = { total: roster.length, present: 0, late: 0, excused: 0, absent: 0, none: 0, out: 0 };
+  for (const r of roster) { if (!r.attendance) c.none++; else { c[r.attendance.status]++; if (r.attendance.check_out_time) c.out++; } }
+  return c;
+}
+
+function renderHead() {
+  const { schedule: s, roster } = current.data;
+  const st = sessState(s), c = counts(roster);
+  $('sessHead').innerHTML = `
+    <div class="row"><span class="mono" style="font-weight:600">${esc(s.start_time)}–${esc(s.end_time)} น.</span><span class="badge ${st.cls}">${st.label}</span></div>
+    <div style="font-size:17px;font-weight:700;margin-top:4px;">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)} · ${esc(s.course_name)}</div>
+    <div class="muted">${esc(s.room)} · ${new Date(`${s.class_date}T00:00:00+07:00`).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · สายเมื่อเกิน ${esc(s.late_threshold_minutes)} นาที</div>`;
+  $('tiles').innerHTML = [
+    ['มา', c.present, 'var(--teal-dark)'], ['สาย', c.late, 'var(--amber-ink)'], ['ลา', c.excused, 'var(--blue)'],
+    ['ขาด', c.absent, 'var(--brick)'], ['ยังไม่เช็ค', c.none, 'var(--ink-muted)'], ['ออกแล้ว', `${c.out}/${c.present + c.late}`, 'var(--ink)'],
+  ].map(([l, n, col]) => `<div class="tile"><b style="color:${col}">${n}</b><span>${l}</span></div>`).join('');
+  $('markAbsentAll').hidden = !(st.key === 'done' && c.none > 0);
+  $('markAbsentAll').textContent = `ให้คนที่ยังไม่เช็ค (${c.none}) = ขาด`;
+}
+
+function renderRoster() {
+  if (!current?.data) return;
+  const { roster } = current.data;
+  const list = roster.filter((r) => {
+    const a = r.attendance;
+    if (rosterFilter === 'none') return !a;
+    if (rosterFilter === 'late') return a?.status === 'late';
+    if (rosterFilter === 'off') return a && (a.status === 'absent' || a.status === 'excused');
+    if (rosterFilter === 'noout') return a && (a.status === 'present' || a.status === 'late') && !a.check_out_time;
+    return true;
+  });
+  if (!list.length) { $('roster').innerHTML = '<div class="muted" style="padding:10px 0">ไม่มีรายชื่อในตัวกรองนี้</div>'; return; }
+  $('roster').innerHTML = list.map((r) => {
+    const a = r.attendance, st = a ? STATUS[a.status] : null;
+    const lines = [];
+    if (a && (a.status === 'present' || a.status === 'late') && !a.is_manual) {
+      lines.push(`เข้า ${fmtTime(a.check_in_time)}${a.check_out_time ? ` → ออก ${fmtTime(a.check_out_time)}` : ' · ยังไม่สแกนออก'} · ใบหน้า ${a.face_match_score ?? '-'} · ${a.distance_meters ?? '-'} ม.`);
+    }
+    if (a?.is_manual) lines.push(`✎ บันทึกโดย ${esc(a.marked_by ?? '-')} ${fmtTime(a.marked_at)} น.`);
+    if (a?.note) lines.push(`📝 ${esc(a.note)}`);
+    return `<div class="stu" data-sid="${esc(r.student_id)}" data-att="${esc(a?.attendance_id ?? '')}">
+      <div>
+        <div class="name">${esc(r.full_name)}</div>
+        <div class="sub"><span class="mono">${esc(r.student_code)}</span>${r.face_enrolled ? '' : ' · <span class="pill p-warn">ยังไม่ลงทะเบียนหน้า</span>'}</div>
+        ${lines.length ? `<div class="sub">${lines.join('<br>')}</div>` : ''}
+      </div>
+      <div style="text-align:right">
+        <span class="pill ${st ? 'p-' + st.cls : 'p-none'}">${st ? st.long : 'ยังไม่เช็ค'}</span>
+        ${a?.left_early ? '<br><span class="pill p-late" style="margin-top:4px">ออกก่อนเวลา</span>' : ''}
+      </div>
+      <div class="actions">
+        <div class="seg" role="group" aria-label="เปลี่ยนสถานะ">
+          ${Object.entries(STATUS).map(([k, v]) => `<button class="s-${k} ${a?.status === k ? 'on' : ''}" data-status="${k}">${v.label}</button>`).join('')}
+        </div>
+        <button class="btn btn-ghost btn-sm note-btn">✎ หมายเหตุ</button>
+      </div>
+      <div class="note-edit">
+        <textarea maxlength="300" placeholder="หมายเหตุ เช่น ลาป่วย มีใบรับรองแพทย์">${esc(a?.note ?? '')}</textarea>
+        <button class="btn btn-primary btn-sm note-save">บันทึก</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('roster').querySelectorAll('.stu').forEach((row) => {
+    row.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => mark(row, b.dataset.status)));
+    const box = row.querySelector('.note-edit');
+    row.querySelector('.note-btn').addEventListener('click', () => { box.classList.toggle('open'); editing = box.classList.contains('open'); if (editing) box.querySelector('textarea').focus(); });
+    row.querySelector('.note-save').addEventListener('click', () => saveNote(row, box.querySelector('textarea').value));
+  });
+}
+
+async function mark(row, status) {
+  const r = current.data.roster.find((x) => x.student_id === row.dataset.sid);
+  if (r?.attendance?.status === status) return;
+  if (r?.attendance && !r.attendance.is_manual && (r.attendance.status === 'present' || r.attendance.status === 'late')) {
+    if (!confirm(`${r.full_name} สแกนหน้าเช็คชื่อแล้ว (${STATUS[r.attendance.status].long}) — ต้องการเปลี่ยนเป็น "${STATUS[status].long}" ใช่ไหม?`)) return;
+  }
+  row.querySelectorAll('.seg button').forEach((b) => (b.disabled = true));
+  try {
+    await staffApi('mark', { schedule_id: current.id, student_id: row.dataset.sid, status });
+    toast(`${r?.full_name ?? ''}: ${STATUS[status].long}`);
+    await refreshSession(true);
+  } catch (err) { toast(err.message); row.querySelectorAll('.seg button').forEach((b) => (b.disabled = false)); }
+}
+
+async function saveNote(row, note) {
+  const r = current.data.roster.find((x) => x.student_id === row.dataset.sid);
+  try {
+    if (r?.attendance) await staffApi('note', { attendance_id: r.attendance.attendance_id, note });
+    else {
+      // ยังไม่มีรายการเช็คชื่อ: บันทึกหมายเหตุพร้อมสถานะ "ลา" (เคสที่พบบ่อยที่สุดเวลาใส่หมายเหตุให้คนที่ไม่มา)
+      if (!confirm('นักศึกษาคนนี้ยังไม่ได้เช็คชื่อ — บันทึกเป็น "ลา" พร้อมหมายเหตุนี้ใช่ไหม?')) return;
+      await staffApi('mark', { schedule_id: current.id, student_id: row.dataset.sid, status: 'excused', note });
+    }
+    editing = false; toast('บันทึกหมายเหตุแล้ว'); await refreshSession(true);
+  } catch (err) { toast(err.message); }
+}
+
+$('markAbsentAll').addEventListener('click', async () => {
+  const pending = current.data.roster.filter((r) => !r.attendance);
+  if (!pending.length || !confirm(`บันทึก "ขาด" ให้ ${pending.length} คนที่ยังไม่เช็คชื่อ?`)) return;
+  $('markAbsentAll').disabled = true;
+  let ok = 0;
+  for (const r of pending) {
+    try { await staffApi('mark', { schedule_id: current.id, student_id: r.student_id, status: 'absent' }); ok++; } catch { /* นับเฉพาะที่สำเร็จ */ }
+  }
+  $('markAbsentAll').disabled = false;
+  toast(`บันทึกขาดแล้ว ${ok}/${pending.length} คน`);
+  refreshSession(true);
+});
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && current) refreshSession(true); });
+
+// ---- เริ่ม ----
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) start(); else showLogin();
+})();
+</script>
+</body>
+</html>
