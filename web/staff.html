@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="lib/xlsx-lite.js"></script>
 <style>
   :root{
     --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
@@ -153,6 +154,7 @@
       <button class="btn btn-ghost btn-sm" id="back">← รายการคาบ</button>
       <span class="spacer"></span>
       <span class="muted" id="liveInfo"></span>
+      <button class="btn btn-ghost btn-sm" id="btnSheet" title="ดาวน์โหลดใบเซ็นชื่อของคาบนี้เป็นไฟล์ Excel">📥 ใบเซ็นชื่อ (Excel)</button>
     </div>
     <div class="card">
       <div id="sessHead"></div>
@@ -224,7 +226,7 @@ const STATUS = {
 
 // ---- Supabase Auth (เก็บเซสชันในเบราว์เซอร์ ต่ออายุ token อัตโนมัติ) ----
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-let me = null;
+let me = null, mySections = [];
 
 async function staffApi(action, extra = {}) {
   const { data: { session } } = await sb.auth.getSession();
@@ -259,7 +261,7 @@ $('loginForm').addEventListener('submit', async (e) => {
 async function start() {
   try {
     const d = await staffApi('me');
-    me = d.user;
+    me = d.user; mySections = d.sections || [];
     $('who').innerHTML = `<b>${esc(me.full_name)}</b><br>${me.role === 'admin' ? 'ผู้ดูแลระบบ' : 'อาจารย์'} · ${d.sections.length} กลุ่มเรียน · <a href="#" id="logout">ออกจากระบบ</a>`;
     $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); showLogin(); });
     if (!$('date').value) $('date').value = bkkToday();
@@ -575,6 +577,99 @@ $('ntfAdd').onclick = async () => {
   await saveNotify({ chat_id: chat, is_active: false });
   $('ntfChatId').value = '';
 };
+
+// ---- ใบเซ็นชื่อ (Excel) — โครงตามใบเซ็นชื่อแล็บเดิม: หัวกระดาษ วิชา/บท/วันเวลา/ห้อง → ตาราง → สรุปยอด → ลงชื่อ ----
+const hm = (iso) => (iso ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso)) : '');
+
+function buildSignSheet(d) {
+  const s = d.schedule, sec = mySections.find((x) => x.section_id === s.section_id) || {};
+  const T = { font: { sz: 20, b: true }, h: 'center' };
+  const H = { font: { sz: 16 }, h: 'center' };
+  const TH = { font: { sz: 15, b: true }, h: 'center', v: 'center', border: 'thin', fill: 'EDEDED', wrap: true };
+  const TD = { font: { sz: 15 }, border: 'thin', v: 'center' };
+  const TDC = { ...TD, h: 'center' };
+  const ST = { present: ['มา', null], late: ['สาย', 'FCE8C3'], excused: ['ลา', 'DCE8F5'], absent: ['ขาด', 'F6D5D1'] };
+  const dateTh = new Date(`${s.class_date}T12:00:00+07:00`).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  const rows = [], merges = [];
+  const full = (text, style, h) => { rows.push({ h, cells: [{ v: text, s: style }] }); merges.push(`A${rows.length}:J${rows.length}`); };
+  full('ใบเซ็นชื่อเข้าเรียนปฏิบัติการ', T, 32);
+  full(`รายวิชา ${s.course_code ?? ''} ${s.course_name ?? ''}    กลุ่มเรียน ${s.section_no ?? ''}${sec.term ? `    ภาคเรียนที่ ${sec.term}` : ''}`, H, 24);
+  full('ปฏิบัติการที่ ..........    เรื่อง ..........................................................................................', H, 24);
+  full(`${dateTh}    เวลา ${s.start_time}–${s.end_time} น.    ห้อง ${s.room ?? '-'}`, H, 24);
+  rows.push({ h: 8, cells: [] });
+
+  // หัวตาราง 2 ชั้น (แถว 6–7)
+  const h1 = rows.length + 1, h2 = h1 + 1;
+  rows.push({ h: 22, cells: [
+    { v: 'ที่', s: TH }, { v: 'รหัสนักศึกษา', s: TH }, { v: 'ชื่อ - นามสกุล', s: TH }, { v: 'กลุ่ม', s: TH },
+    { v: 'เวลา', s: TH }, { v: '', s: TH }, { v: 'สถานะ', s: TH }, { v: 'อุปกรณ์', s: TH }, { v: '', s: TH }, { v: 'หมายเหตุ', s: TH },
+  ] });
+  rows.push({ h: 22, cells: [
+    { v: '', s: TH }, { v: '', s: TH }, { v: '', s: TH }, { v: '', s: TH },
+    { v: 'เข้า', s: TH }, { v: 'ออก', s: TH }, { v: '', s: TH }, { v: 'รับ', s: TH }, { v: 'คืน', s: TH }, { v: '', s: TH },
+  ] });
+  for (const c of ['A', 'B', 'C', 'D', 'G', 'J']) merges.push(`${c}${h1}:${c}${h2}`);
+  merges.push(`E${h1}:F${h1}`, `H${h1}:I${h1}`);
+
+  const c = { present: 0, late: 0, excused: 0, absent: 0, none: 0 };
+  d.roster.forEach((r, i) => {
+    const a = r.attendance;
+    const st = a ? ST[a.status] : null;
+    if (a) c[a.status]++; else c.none++;
+    const scanned = a && !a.is_manual && (a.status === 'present' || a.status === 'late');
+    const notes = [];
+    if (a?.left_early) notes.push('ออกก่อนเวลา');
+    if (a?.note) notes.push(a.note);
+    if (a?.is_manual) notes.push(`✎ บันทึกโดย ${(a.marked_by ?? 'อาจารย์').trim()}`);
+    const noteText = notes.join(' · ');
+    const lines = Math.max(1, Math.ceil([...noteText].length / 30)); // คอลัมน์หมายเหตุ ~30 ตัวอักษร/บรรทัด
+    rows.push({ h: Math.max(24, lines * 17 + 6), cells: [
+      { v: i + 1, s: TDC }, { v: r.student_code ?? '', s: TDC }, { v: r.full_name ?? '', s: { ...TD, shrink: true } }, { v: '', s: TDC },
+      { v: scanned ? hm(a.check_in_time) : (a?.is_manual && (a.status === 'present' || a.status === 'late') ? '✎' : ''), s: TDC },
+      { v: scanned && a.check_out_time ? hm(a.check_out_time) : '', s: TDC },
+      { v: st ? st[0] : '–', s: { ...TDC, fill: st?.[1] || undefined, font: { sz: 15, b: !!st?.[1] } } },
+      { v: '', s: TDC }, { v: '', s: TDC },
+      { v: noteText, s: { ...TD, font: { sz: 13 }, wrap: true } },
+    ] });
+  });
+
+  rows.push({ h: 10, cells: [] });
+  const total = d.roster.length;
+  full(`สรุป   ทั้งหมด ${total} คน    มา ${c.present}    สาย ${c.late}    ลา ${c.excused}    ขาด ${c.absent}${c.none ? `    ยังไม่เช็คชื่อ ${c.none}` : ''}`, { font: { sz: 16, b: true }, h: 'left' }, 26);
+  rows.push({ h: 18, cells: [] });
+
+  const sign = (left, right, h = 26) => {
+    rows.push({ h, cells: [{ v: left, s: H }, null, null, null, null, { v: right, s: H }] });
+    merges.push(`A${rows.length}:E${rows.length}`, `F${rows.length}:J${rows.length}`);
+  };
+  const dots = '..................................................';
+  sign(`ลงชื่อ ${dots}`, `ลงชื่อ ${dots}`, 30);
+  sign(`( ${me?.role === 'instructor' ? me.full_name : dots} )`, `( ${dots} )`);
+  sign('อาจารย์ผู้สอน', 'ผู้ตรวจสอบ (นักวิทยาศาสตร์)');
+  rows.push({ h: 12, cells: [] });
+  full(`เวลาเข้า/ออกมาจากการสแกนใบหน้าในระบบ CPH Smart Check-in · ✎ = อาจารย์บันทึกแทน · พิมพ์เมื่อ ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' })} น.`,
+    { font: { sz: 12, i: true, color: '666666' }, h: 'left', wrap: true }, 20);
+
+  const blob = XlsxLite.build([{
+    name: `${s.course_code}-${s.section_no}`.slice(0, 31),
+    cols: [5, 13, 30, 6, 8, 8, 8, 8, 8, 24],
+    rows, merges, printTitleRows: `${h1}:${h2}`, footer: 'หน้า &P / &N',
+  }]);
+  return { blob, filename: `ใบเซ็นชื่อ_${s.course_code}-${s.section_no}_${s.class_date}_${s.start_time.replace(':', '')}.xlsx` };
+}
+
+$('btnSheet').addEventListener('click', async () => {
+  if (!current) return;
+  $('btnSheet').disabled = true;
+  try {
+    await refreshSession(true); // ใช้ข้อมูลล่าสุด
+    const { blob, filename } = buildSignSheet(current.data);
+    XlsxLite.download(blob, filename);
+    toast('ดาวน์โหลดใบเซ็นชื่อแล้ว');
+  } catch (err) { toast('สร้างไฟล์ไม่สำเร็จ: ' + err.message); }
+  $('btnSheet').disabled = false;
+});
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && current) refreshSession(true); });
 
