@@ -105,7 +105,8 @@ Deno.serve(async (req: Request) => {
     // 2) ใบหน้า — เทียบเฉพาะคนที่เช็คชื่อเข้าคาบเหล่านี้แล้ว
     const { data: checkedIn } = await supabase
       .from('attendance_records').select('attendance_id, student_id, schedule_id, check_out_time')
-      .in('schedule_id', inZone.map((v) => v.s.schedule_id));
+      .in('schedule_id', inZone.map((v) => v.s.schedule_id))
+      .in('status', ['present', 'late']); // คนที่ถูกบันทึกขาด/ลา สแกนออกไม่ได้
     if (!checkedIn || checkedIn.length === 0) return fail('NOT_CHECKED_IN', 'ยังไม่มีใครเช็คชื่อเข้าคาบนี้', 409);
     const { data: templates } = await supabase
       .from('face_templates').select('student_id, embedding_vector').in('student_id', [...new Set(checkedIn.map((r) => r.student_id))]);

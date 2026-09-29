@@ -61,6 +61,9 @@ insert into public.lab_sections (section_id, course_id, semester_id, section_no,
   ('e0000000-0000-4000-8000-000000000002', 'c0000000-0000-4000-8000-000000000002', 'd0000000-0000-4000-8000-000000000001', '01', 'a0000000-0000-4000-8000-000000000002', 40, 15)
 on conflict (section_id) do nothing;
 
+-- คาบทดสอบมีทุกชั่วโมง → ปิดตัดขาดอัตโนมัติไว้ก่อน (เปิดได้ในหน้าอาจารย์ > แจ้งเตือน Telegram)
+update public.lab_sections set auto_absent = false where section_id::text like 'e0000000-%';
+
 insert into public.section_enrollments (section_id, student_id)
 select case when s.student_code like '6601%' then 'e0000000-0000-4000-8000-000000000001'::uuid
             else 'e0000000-0000-4000-8000-000000000002'::uuid end,

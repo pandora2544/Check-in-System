@@ -82,6 +82,23 @@
   .toast.show{ opacity:.95; }
   .live-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:#16a34a; margin-right:5px; animation:pulse 1.6s infinite; }
   @keyframes pulse{ 50%{ opacity:.3; } }
+  .ntf-head{ display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+  .ntf-head h3{ margin:0; font-size:15px; }
+  .ntf-body{ margin-top:10px; }
+  .ntf-row{ display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .ntf-row:first-child{ border-top:none; }
+  .ntf-row .t{ flex:1; min-width:180px; font-size:14px; }
+  .ntf-row .t small{ display:block; color:var(--ink-muted); font-size:12px; }
+  .sw{ position:relative; width:44px; height:26px; flex:none; }
+  .sw input{ position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; z-index:1; }
+  .sw span{ position:absolute; inset:0; background:var(--line); border-radius:999px; transition:background .15s; }
+  .sw span::after{ content:''; position:absolute; left:3px; top:3px; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:transform .15s; }
+  .sw input:checked + span{ background:var(--teal); }
+  .sw input:checked + span::after{ transform:translateX(18px); }
+  .sw input:disabled + span{ opacity:.5; }
+  .ck{ display:inline-flex; align-items:center; gap:5px; font-size:12.5px; color:var(--ink-muted); margin:0 10px 0 0; font-weight:500; }
+  .ck input{ width:auto; }
+  .b-on{ background:var(--teal-bg); color:var(--teal-dark); } .b-off{ background:var(--line); color:var(--ink-muted); }
   [hidden]{ display:none !important; }
 </style>
 </head>
@@ -90,7 +107,7 @@
   <header>
     <div>
       <h1>เช็คชื่อ — หน้าอาจารย์</h1>
-      <div class="muted">ดูการเข้าเรียนสด · เช็คชื่อแทน · แก้สถานะ</div>
+      <div class="muted">ดูการเข้าเรียนสด · เช็คชื่อแทน · แก้สถานะ · แจ้งเตือน Telegram</div>
     </div>
     <div class="who" id="who"></div>
   </header>
@@ -140,6 +157,32 @@
     <div class="card">
       <div id="sessHead"></div>
       <div class="tiles" id="tiles"></div>
+    </div>
+    <div class="card" id="ntfCard" hidden>
+      <div class="ntf-head" id="ntfToggle">
+        <h3>🔔 แจ้งเตือน Telegram</h3>
+        <span class="badge" id="ntfBadge"></span>
+        <span class="spacer"></span>
+        <span class="muted" id="ntfArrow">▾</span>
+      </div>
+      <div class="ntf-body" id="ntfBody" hidden>
+        <div id="ntfRows"></div>
+        <div class="row" style="margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" id="ntfSendNow">📤 ส่งสรุป ณ ตอนนี้เข้ากลุ่ม</button>
+          <span class="muted">ใช้ได้ทุกเวลา ไม่นับเป็นสรุปอัตโนมัติ</span>
+        </div>
+        <div id="ntfAdmin" hidden style="margin-top:12px; border-top:1px dashed var(--line); padding-top:10px;">
+          <label>เพิ่มกลุ่ม Telegram ให้กลุ่มเรียนนี้ (แอดมิน)</label>
+          <div class="muted" style="margin-bottom:6px;">เพิ่มบอท @cph_labassist_bot เข้ากลุ่ม แล้วพิมพ์ /start ในกลุ่ม 1 ครั้ง จากนั้นกด "ค้นหากลุ่ม"</div>
+          <div class="row">
+            <button class="btn btn-ghost btn-sm" id="ntfFind">🔍 ค้นหากลุ่ม</button>
+            <input id="ntfChatId" placeholder="หรือใส่ chat_id เช่น -5369869395" style="width:auto; flex:1; min-width:170px; font-size:14px; padding:7px 10px;">
+            <button class="btn btn-primary btn-sm" id="ntfAdd">เพิ่ม</button>
+          </div>
+          <div id="ntfFound" style="margin-top:6px;"></div>
+        </div>
+        <div class="err" id="ntfErr"></div>
+      </div>
     </div>
     <div class="card">
       <div class="row" style="margin-bottom:6px;">
@@ -298,7 +341,9 @@ async function openSession(id) {
   show('viewSession'); $('sessErr').textContent = '';
   $('sessHead').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('tiles').innerHTML = ''; $('roster').innerHTML = '';
   current = { id, data: null };
+  $('ntfCard').hidden = true;
   await refreshSession();
+  if (current?.data) loadNotify(current.data.schedule.section_id);
   stopRefresh();
   refreshTimer = setInterval(() => { if (!document.hidden && !editing) refreshSession(true); }, REFRESH_MS);
 }
@@ -429,6 +474,107 @@ $('markAbsentAll').addEventListener('click', async () => {
   toast(`บันทึกขาดแล้ว ${ok}/${pending.length} คน`);
   refreshSession(true);
 });
+
+// ---- แจ้งเตือน Telegram (ตั้งค่ารายกลุ่มเรียน) ----
+let ntf = null, ntfOpen = false;
+try { ntfOpen = localStorage.getItem('cph_ntf_open') === '1'; } catch { /* ไม่มี storage ก็ได้ */ }
+$('ntfToggle').onclick = () => {
+  ntfOpen = !ntfOpen; renderNotify();
+  try { localStorage.setItem('cph_ntf_open', ntfOpen ? '1' : '0'); } catch { /* ข้าม */ }
+};
+
+async function loadNotify(sectionId) {
+  try { ntf = await staffApi('notify_get', { section_id: sectionId }); renderNotify(); }
+  catch (err) { ntf = null; $('ntfCard').hidden = true; }
+}
+
+function renderNotify() {
+  if (!ntf) return;
+  $('ntfCard').hidden = false;
+  const active = ntf.channels.filter((c) => c.is_active).length;
+  $('ntfBadge').className = 'badge ' + (active ? 'b-on' : 'b-off');
+  $('ntfBadge').textContent = active ? `เปิดอยู่ ${active} กลุ่ม` : (ntf.channels.length ? 'ปิดอยู่' : 'ยังไม่ผูกกลุ่ม');
+  $('ntfBody').hidden = !ntfOpen; $('ntfArrow').textContent = ntfOpen ? '▴' : '▾';
+  $('ntfAdmin').hidden = me?.role !== 'admin';
+  $('ntfSendNow').disabled = !active;
+  const sw = (key, on, extra = '') => `<label class="sw"><input type="checkbox" data-k="${key}" ${on ? 'checked' : ''} ${extra}><span></span></label>`;
+  const rows = [];
+  rows.push(`<div class="ntf-row">
+    <div class="t">ตัด "ขาด" อัตโนมัติเมื่อจบคาบ<small>คนที่ยังไม่เช็คชื่อตอนหมดเวลาคาบ จะถูกบันทึกเป็นขาด (แก้ทีหลังได้)</small></div>
+    ${sw('auto_absent', ntf.auto_absent)}</div>`);
+  if (!ntf.channels.length) {
+    rows.push(`<div class="ntf-row"><div class="t muted">กลุ่มเรียนนี้ยังไม่ได้ผูกกลุ่ม Telegram${me?.role === 'admin' ? ' — เพิ่มได้ด้านล่าง' : ' — ติดต่อแอดมิน'}</div></div>`);
+  }
+  for (const c of ntf.channels) {
+    rows.push(`<div class="ntf-row" data-chat="${esc(c.chat_id)}">
+      <div class="t">💬 ${esc(c.title || 'กลุ่ม Telegram')}<small class="mono">${esc(c.chat_id)}</small>
+        <div style="margin-top:4px;">
+          <label class="ck"><input type="checkbox" data-k="notify_mid" ${c.notify_mid ? 'checked' : ''}> สรุปหลังเริ่มคาบ ${esc(current?.data?.schedule?.late_threshold_minutes ?? 15)} นาที</label>
+          <label class="ck"><input type="checkbox" data-k="notify_end" ${c.notify_end ? 'checked' : ''}> สรุปจบคาบ</label>
+          ${me?.role === 'admin' ? '<button class="btn btn-ghost btn-sm ntf-rm" style="padding:3px 8px;font-size:12px;">ลบ</button>' : ''}
+        </div>
+      </div>
+      ${sw('is_active', c.is_active, ntf.telegram_ready ? '' : 'disabled')}</div>`);
+  }
+  $('ntfRows').innerHTML = rows.join('');
+  $('ntfRows').querySelectorAll('input[type=checkbox]').forEach((inp) => inp.addEventListener('change', () => {
+    const row = inp.closest('.ntf-row'), chat = row.dataset.chat;
+    saveNotify({ [inp.dataset.k]: inp.checked, ...(chat ? { chat_id: chat } : {}) }, inp);
+  }));
+  $('ntfRows').querySelectorAll('.ntf-rm').forEach((b) => b.addEventListener('click', () => {
+    const chat = b.closest('.ntf-row').dataset.chat;
+    if (confirm(`เลิกผูกกลุ่ม ${chat} กับกลุ่มเรียนนี้?`)) saveNotify({ chat_id: chat, remove: true });
+  }));
+}
+
+async function saveNotify(patch, inp) {
+  $('ntfErr').textContent = '';
+  if (inp) inp.disabled = true;
+  try {
+    ntf = await staffApi('notify_set', { section_id: ntf.section_id, ...patch });
+    renderNotify();
+    if ('is_active' in patch) toast(patch.is_active ? 'เปิดแจ้งเตือนแล้ว' : 'ปิดแจ้งเตือนแล้ว');
+    else if ('auto_absent' in patch) toast(patch.auto_absent ? 'เปิดตัดขาดอัตโนมัติ' : 'ปิดตัดขาดอัตโนมัติ');
+    else toast('บันทึกแล้ว');
+  } catch (err) {
+    $('ntfErr').textContent = err.message;
+    if (inp) { inp.checked = !inp.checked; inp.disabled = false; }
+  }
+}
+
+$('ntfSendNow').onclick = async () => {
+  $('ntfSendNow').disabled = true; $('ntfErr').textContent = '';
+  try {
+    const r = await staffApi('notify_send_now', { schedule_id: current.id });
+    const bad = r.sent.filter((x) => x.error);
+    if (bad.length) $('ntfErr').textContent = bad.map((x) => x.error).join(' · ');
+    else toast(`ส่งสรุปเข้า ${r.sent.length} กลุ่มแล้ว`);
+  } catch (err) { $('ntfErr').textContent = err.message; }
+  $('ntfSendNow').disabled = false;
+};
+
+$('ntfFind').onclick = async () => {
+  $('ntfFound').innerHTML = '<span class="muted">กำลังค้นหา…</span>'; $('ntfErr').textContent = '';
+  try {
+    const { chats } = await staffApi('tg_chats');
+    const have = new Set(ntf.channels.map((c) => c.chat_id));
+    $('ntfFound').innerHTML = chats.length
+      ? chats.map((c) => `<div class="row" style="padding:4px 0;"><span>💬 ${esc(c.title)}</span><span class="mono muted">${esc(c.chat_id)}</span><span class="spacer"></span>
+          ${have.has(c.chat_id) ? '<span class="muted">ผูกแล้ว</span>' : `<button class="btn btn-primary btn-sm" data-chat="${esc(c.chat_id)}" data-title="${esc(c.title)}">ผูกกลุ่มนี้</button>`}</div>`).join('')
+      : '<span class="muted">ไม่พบ — พิมพ์ /start ในกลุ่มที่มีบอทอยู่ แล้วลองอีกครั้ง (บอทเห็นข้อความย้อนหลังไม่เกิน 24 ชม.)</span>';
+    $('ntfFound').querySelectorAll('button[data-chat]').forEach((b) => b.addEventListener('click', async () => {
+      await saveNotify({ chat_id: b.dataset.chat, title: b.dataset.title, is_active: false });
+      $('ntfFound').innerHTML = '<span class="muted">ผูกแล้ว — เปิดสวิตช์ด้านบนเมื่อต้องการเริ่มส่ง</span>';
+    }));
+  } catch (err) { $('ntfFound').innerHTML = ''; $('ntfErr').textContent = err.message; }
+};
+
+$('ntfAdd').onclick = async () => {
+  const chat = $('ntfChatId').value.trim();
+  if (!chat) return;
+  await saveNotify({ chat_id: chat, is_active: false });
+  $('ntfChatId').value = '';
+};
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden && current) refreshSession(true); });
 
