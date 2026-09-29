@@ -54,6 +54,9 @@
   .video-wrap.good{ border-color:var(--teal); }
   video{ width:100%; height:100%; object-fit:cover; display:block; transform:scaleX(-1); }
   .video-wrap canvas{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); pointer-events:none; }
+  .scanbar{ max-width:220px; height:6px; margin:6px auto 2px; background:var(--line); border-radius:3px; overflow:hidden; display:none; }
+  .scanbar.on{ display:block; }
+  .scanbar i{ display:block; height:100%; width:0; background:var(--teal); transition:width .15s; }
   .cam-res{ text-align:center; font-size:11px; color:var(--ink-muted); font-family:'IBM Plex Mono',monospace; min-height:14px; }
   .snap{ position:relative; width:180px; height:180px; margin:0 auto 10px; border-radius:18px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.15); }
   .snap img{ width:100%; height:100%; display:block; }
@@ -114,6 +117,7 @@
       <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อ</button>
       <div id="sessionBox"></div>
       <div class="video-wrap" id="ciWrap"><video id="ciVideo" autoplay muted playsinline></video><canvas id="ciCanvas"></canvas></div>
+      <div class="scanbar" id="ciBar"><i></i></div>
       <div class="cam-res" id="ciRes"></div>
       <div class="scan-hint" id="ciHint"></div>
       <div class="status" id="ciStatus"></div>
@@ -140,6 +144,7 @@
         </label>
         <button class="btn btn-primary" id="btnEnrollCam" disabled>เปิดกล้องและสแกนใบหน้า</button>
         <div class="video-wrap" id="enWrap"><video id="enVideo" autoplay muted playsinline></video><canvas id="enCanvas"></canvas></div>
+        <div class="scanbar" id="enBar"><i></i></div>
         <div class="cam-res" id="enRes"></div>
         <div class="scan-hint" id="enHint"></div>
       </div>
@@ -211,10 +216,16 @@ const TEST_ROOMS = [
 ];
 
 // ค่าตั้งต้น ยังไม่ได้ปรับจูนกับมือถือจริง — หน้าจอจะแสดงคะแนนจริงให้ดูประกอบการปรับ
+// สแกนแบบปรับเวลาอัตโนมัติ: สแกนไปเรื่อยๆ จนได้เฟรมคุณภาพดีครบ (ไม่ใช่ตัดสินจากหน้าต่างเวลาตายตัว)
+// → คนจริงที่คะแนน real แกว่ง (เช่นแสงน้อย) จะใช้เวลานานขึ้นอีกนิดแทนที่จะต้องกดสแกนใหม่ทั้งรอบ
 const REAL_THRESHOLD = 0.6;     // คะแนน antispoof ต่อเฟรมที่ถือว่า "เป็นคนจริง"
-const REAL_RATIO = 0.6;         // สัดส่วนเฟรมที่ต้องผ่าน
-const SCAN_MS = 2500;           // ระยะเวลาสแกน
-const MIN_FACE_FRAMES = 4;      // ต้องเจอหน้าอย่างน้อยกี่เฟรม
+const GOOD_FRAMES_NEEDED = 5;   // ต้องได้เฟรมผ่านเกณฑ์กี่เฟรม
+const MIN_GOOD_RATIO = 0.3;     // สัดส่วนเฟรมผ่านขั้นต่ำ (รูปถ่าย/หน้าจอมักผ่านแค่บางเฟรม)
+const SCAN_MIN_MS = 1200;       // สแกนอย่างน้อย
+const SCAN_MAX_MS = 8000;       // สแกนนานสุดก่อนแจ้งว่าไม่ผ่าน
+const MIN_FACE_WIDTH = 0.28;    // ใบหน้ากว้างอย่างน้อยกี่ส่วนของภาพ (ไกลกว่านี้ให้ขยับเข้า)
+const MAX_FACE_WIDTH = 0.85;
+const MIN_BRIGHTNESS = 70;      // ความสว่างเฉลี่ยบริเวณใบหน้า (0-255)
 
 const PROCESS_WIDTH = 960; // ความกว้างภาพที่ใช้ประมวลผล (ดูคำอธิบายที่ CAMERA)
 const HUMAN_CONFIG = {
@@ -239,7 +250,8 @@ const HUMAN_CONFIG = {
 // ขอความละเอียดสูงสุดที่กล้องหน้ารองรับ (เบราว์เซอร์จะให้ค่าที่ใกล้ที่สุดเอง ไม่ต้องขอสิทธิ์เพิ่ม)
 // การประมวลผลย่อภาพเหลือกว้าง PROCESS_WIDTH — ใบหน้าที่ตัดส่งเข้าโมเดลจดจำใช้ ~224px อยู่แล้ว
 // ภาพต้นทางคมขึ้นช่วยให้ภาพใบหน้าที่ย่อลงคมขึ้น แต่ประมวลผลเต็มความละเอียดจะหน่วงบนมือถือสเปกต่ำโดยไม่ได้ความแม่นยำเพิ่ม
-const CAMERA = { video: { facingMode: 'user', width: { ideal: 4096 }, height: { ideal: 4096 }, frameRate: { ideal: 30 } }, audio: false };
+// กล้องหน้ามือถือส่วนใหญ่ให้วิดีโอสูงสุดราว 1080p — ขอสูงกว่านี้มักได้ fps ต่ำลงจนสแกนได้เฟรมน้อย
+const CAMERA = { video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1920 }, frameRate: { ideal: 30 } }, audio: false };
 const ROOM_FROM_QR = new URLSearchParams(location.search).get('room');
 
 // ============================================================
@@ -464,35 +476,76 @@ function averageEmbeddings(list) {
   return normalize(out.map((x) => x / list.length));
 }
 
-// คืนค่า { ok, embedding, realAvg, frames, reason }
-async function scanFace(videoEl, wrapEl, hintEl, canvasEl) {
+// ความสว่างเฉลี่ยบริเวณใบหน้า (สุ่มจากภาพย่อ 24×24)
+const _lumaCanvas = document.createElement('canvas'); _lumaCanvas.width = _lumaCanvas.height = 24;
+function faceBrightness(video, f) {
+  const b = f.boxRaw; if (!b || !video.videoWidth) return 255;
+  const W = video.videoWidth, H = video.videoHeight;
+  const ctx = _lumaCanvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, b[0] * W, b[1] * H, b[2] * W, b[3] * H, 0, 0, 24, 24);
+  const d = ctx.getImageData(0, 0, 24, 24).data;
+  let sum = 0; for (let i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  return sum / (d.length / 4);
+}
+
+// คืนค่า { ok, embedding, realAvg, frames, good, reason, snapshot }
+async function scanFace(videoEl, wrapEl, hintEl, canvasEl, barEl) {
   const start = Date.now();
-  let lastFace = null;
-  let frames = 0, realOk = 0, realSum = 0, multi = 0;
-  const embeddings = [];
-  while (Date.now() - start < SCAN_MS) {
+  const good = [];                 // [{ real, embedding }]
+  let frames = 0, realSum = 0, multi = 0, dark = 0, far = 0, bestFace = null, bestReal = -1, lastLuma = 255;
+  const bar = barEl?.querySelector('i'); barEl?.classList.add('on');
+  const setBar = (x) => { if (bar) bar.style.width = `${Math.min(100, x * 100)}%`; };
+  setBar(0);
+
+  while (Date.now() - start < SCAN_MAX_MS) {
     const res = await human.detect(videoEl);
     const faces = (res.face ?? []).filter((f) => (f.score ?? 0) > 0.5);
     if (canvasEl) drawOverlay(canvasEl, videoEl, faces.length === 1 ? faces[0] : null);
-    if (faces.length > 1) { multi++; hintEl.textContent = 'พบมากกว่า 1 ใบหน้า — ให้มีแค่คุณคนเดียวในกรอบ'; wrapEl.classList.remove('good'); continue; }
+    if (faces.length > 1) { multi++; hintEl.textContent = 'พบมากกว่า 1 ใบหน้า — ให้มีแค่คุณคนเดียวในกรอบ'; wrapEl.classList.remove('good'); await sleep(60); continue; }
     const f = faces[0];
     if (!f || !f.embedding || f.embedding.length === 0) { hintEl.textContent = 'ยังไม่เห็นใบหน้า — จัดหน้าให้อยู่กลางวงกลม'; wrapEl.classList.remove('good'); await sleep(60); continue; }
+
+    // คุณภาพภาพ: ขนาดหน้า + แสง (บอกผู้ใช้ทันทีระหว่างสแกน ไม่ต้องรอจนล้มเหลว)
+    const fw = f.boxRaw?.[2] ?? 0.5;
+    if (frames % 3 === 0) lastLuma = faceBrightness(videoEl, f);
+    if (fw < MIN_FACE_WIDTH) { far++; hintEl.textContent = 'ขยับมือถือเข้ามาใกล้หน้าอีกนิด'; wrapEl.classList.remove('good'); await sleep(40); continue; }
+    if (fw > MAX_FACE_WIDTH) { hintEl.textContent = 'ถอยมือถือออกห่างอีกนิด'; wrapEl.classList.remove('good'); await sleep(40); continue; }
+
     frames++;
-    lastFace = f;
     const real = f.real ?? 0;
     realSum += real;
-    if (real >= REAL_THRESHOLD) { realOk++; embeddings.push(Array.from(f.embedding)); }
+    if (real >= REAL_THRESHOLD) good.push({ real, embedding: Array.from(f.embedding) });
+    if (real > bestReal) { bestReal = real; bestFace = f; }
     wrapEl.classList.add('good');
-    hintEl.textContent = `กำลังสแกน… ${Math.max(0, Math.ceil((SCAN_MS - (Date.now() - start)) / 1000))} วิ`;
-    await sleep(80);
+    if (lastLuma < MIN_BRIGHTNESS) { dark++; hintEl.textContent = 'แสงน้อย — หันหน้าเข้าหาแสง/หน้าต่าง จะผ่านเร็วขึ้น'; }
+    else hintEl.textContent = 'มองกล้องนิ่งๆ… กำลังยืนยัน';
+    setBar(good.length / GOOD_FRAMES_NEEDED);
+
+    const elapsed = Date.now() - start;
+    if (good.length >= GOOD_FRAMES_NEEDED && good.length / frames >= MIN_GOOD_RATIO && elapsed >= SCAN_MIN_MS) break;
+    await sleep(40);
   }
+
+  barEl?.classList.remove('on');
   const realAvg = frames ? realSum / frames : 0;
-  const snapshot = lastFace ? snapshotWithTag(videoEl, lastFace) : null;
-  if (frames < MIN_FACE_FRAMES) return { ok: false, reason: multi > frames ? 'พบหลายใบหน้าในกรอบ ให้มีแค่คุณคนเดียว' : 'มองไม่เห็นใบหน้าชัดพอ ลองในที่แสงสว่างกว่านี้', realAvg, frames };
-  if (realOk / frames < REAL_RATIO || embeddings.length === 0) {
-    return { ok: false, reason: `ไม่ผ่านการตรวจว่าเป็นคนจริง (คะแนนเฉลี่ย ${realAvg.toFixed(2)}) — ห้ามใช้รูปถ่าย/หน้าจอ ถ้าเป็นหน้าจริงลองเพิ่มแสงแล้วสแกนใหม่`, realAvg, frames };
+  const snapshot = bestFace ? snapshotWithTag(videoEl, bestFace) : null;
+  const stats = { realAvg, frames, good: good.length, ms: Date.now() - start };
+  console.info('[scan]', stats);
+
+  if (frames < 3) {
+    const reason = multi > frames ? 'พบหลายใบหน้าในกรอบ ให้มีแค่คุณคนเดียว'
+      : far > frames ? 'ใบหน้าอยู่ไกลเกินไป ถือมือถือใกล้ขึ้น (ให้หน้าเต็มวงกลม)'
+      : 'มองไม่เห็นใบหน้าชัดพอ ลองในที่แสงสว่างกว่านี้';
+    return { ok: false, reason, ...stats };
   }
-  return { ok: true, embedding: averageEmbeddings(embeddings), realAvg, frames, snapshot };
+  if (good.length < GOOD_FRAMES_NEEDED || good.length / frames < MIN_GOOD_RATIO) {
+    const tip = dark > frames / 2 ? 'บริเวณใบหน้ามืดเกินไป ให้หันหน้าเข้าหาแสงแล้วลองใหม่'
+      : 'ถ้าเป็นหน้าจริง ลองให้แสงส่องหน้าตรงๆ ไม่ย้อนแสง แล้วลองใหม่';
+    return { ok: false, reason: `ยืนยันว่าเป็นคนจริงไม่สำเร็จ (ผ่าน ${good.length}/${frames} เฟรม, real เฉลี่ย ${realAvg.toFixed(2)}) — ${tip}`, ...stats };
+  }
+  // ใช้เฟรมที่คะแนน real สูงสุด (คุณภาพดีสุด) มาเฉลี่ยเป็นค่าใบหน้า
+  const top = good.sort((a, b) => b.real - a.real).slice(0, 8).map((g) => g.embedding);
+  return { ok: true, embedding: averageEmbeddings(top), snapshot, ...stats };
 }
 
 // ============================================================
@@ -546,7 +599,7 @@ $('btnCheckin').addEventListener('click', async () => {
     // 3) สแกนใบหน้า
     setStatus('ciStatus', 'เปิดกล้อง… มองกล้องให้หน้าอยู่ในวงกลม');
     await startCamera($('ciVideo'), $('ciWrap'), $('ciRes'));
-    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'), $('ciCanvas'));
+    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'), $('ciCanvas'), $('ciBar'));
     stopCamera(); $('ciHint').textContent = '';
     if (!scan.ok) throw new Error(scan.reason);
 
@@ -565,7 +618,7 @@ $('btnCheckin').addEventListener('click', async () => {
         <div class="line mono">${esc(d.student_code)}</div>
         <div style="margin:10px 0 6px;"><span class="pill ${late ? 'late' : 'present'}">${late ? 'มาสาย' : 'มาปกติ'}</span></div>
         <div class="line">เช็คชื่อเวลา ${t} น. · ${esc(d.room)}</div>
-        <div class="line mono" style="margin-top:6px;font-size:11.5px;">ใบหน้า ${d.face_match_score} · ห่างห้อง ${d.distance_meters} ม. · real ${scan.realAvg.toFixed(2)}</div>
+        <div class="line mono" style="margin-top:6px;font-size:11.5px;">ใบหน้า ${d.face_match_score} · ห่างห้อง ${d.distance_meters} ม. · real ${scan.realAvg.toFixed(2)} · สแกน ${(scan.ms/1000).toFixed(1)} วิ (${scan.good}/${scan.frames})</div>
       </div>`;
   } catch (err) {
     stopCamera(); $('ciHint').textContent = '';
@@ -621,7 +674,7 @@ $('btnEnrollCam').addEventListener('click', async () => {
   busy = true; $('btnEnrollCam').disabled = true; clearStatus('enStatus');
   try {
     await startCamera($('enVideo'), $('enWrap'), $('enRes'));
-    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'), $('enCanvas'));
+    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'), $('enCanvas'), $('enBar'));
     stopCamera(); $('enHint').textContent = '';
     if (!scan.ok) throw new Error(scan.reason);
     setStatus('enStatus', 'กำลังบันทึก…');
