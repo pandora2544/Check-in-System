@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
       case 'recent_attendance': {
         const { data, error } = await supabase
           .from('attendance_records')
-          .select(`check_in_time, status, face_match_score, distance_from_location,
+          .select(`check_in_time, check_out_time, left_early, note, status, face_match_score, distance_from_location,
                    students ( student_code, users ( full_name ) ),
                    schedules ( class_date, start_time, locations ( name ), lab_sections ( courses ( course_code ) ) )`)
           .order('check_in_time', { ascending: false })
@@ -94,6 +94,9 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         const rows = (data ?? []).map((r: Record<string, any>) => ({
           check_in_time: r.check_in_time,
+          check_out_time: r.check_out_time,
+          left_early: r.left_early,
+          note: r.note,
           status: r.status,
           student_code: r.students?.student_code,
           full_name: r.students?.users?.full_name,

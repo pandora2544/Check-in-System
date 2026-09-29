@@ -74,6 +74,16 @@
   .cam-sheet.lit .cam-title, .cam-sheet.lit .cam-res{ color:var(--ink-muted); }
   .cam-sheet.lit .cam-cancel{ color:var(--ink); border-color:var(--line); }
   .cam-sheet.lit .scanbar{ background:var(--line); }
+  .btn-row{ display:grid; grid-template-columns:1.4fr 1fr; gap:8px; }
+  .btn-out{ background:#fff; color:var(--teal-dark); border:1.5px solid var(--teal); }
+  .btn-out.due{ background:var(--amber); color:#fff; border-color:var(--amber); }
+  .btn-row.out-first{ grid-template-columns:1fr 1.4fr; }
+  .result.out{ background:#E8EEF7; }
+  .note-box{ margin-top:12px; text-align:left; }
+  .note-box textarea{ width:100%; font-family:inherit; font-size:15px; padding:9px 11px; border-radius:10px; border:1px solid var(--line); min-height:64px; resize:vertical; }
+  .note-box.required textarea{ border-color:var(--amber); background:#fffaf0; }
+  .note-box .row{ margin-top:6px; align-items:center; }
+  .note-saved{ font-size:12.5px; color:var(--teal-dark); }
   .loc-card{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; margin:10px 0 12px; }
   .loc-map{ height:190px; background:#e4ebe6; position:relative; z-index:0; }
   .loc-body{ padding:10px 12px; }
@@ -158,9 +168,13 @@
           <button class="btn btn-ghost btn-sm loc-start" id="btnLocStart" style="display:none">แสดงตำแหน่งของฉัน</button>
         </div>
       </div>
-      <div class="muted" id="roomHint">กดปุ่มด้านล่าง ระบบจะตรวจตำแหน่ง หาคาบที่กำลังเรียน แล้วสแกนใบหน้าให้เอง ไม่ต้องล็อกอิน</div>
+      <div class="muted" id="roomHint">กด <b>เช็คชื่อเข้า</b> ตอนเริ่มคาบ และ <b>สแกนออก</b> ตอนจบคาบ — ระบบตรวจตำแหน่งและสแกนใบหน้าให้เอง ไม่ต้องล็อกอิน</div>
       <div class="gap"></div>
-      <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อ</button>
+      <div class="status warn" id="outReminder" style="display:none;margin:0 0 10px;"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อเข้า</button>
+        <button class="btn btn-out btn-big" id="btnCheckout" disabled>สแกนออก</button>
+      </div>
       <div id="sessionBox"></div>
       <div class="status" id="ciStatus"></div>
       <div id="ciResult"></div>
@@ -421,6 +435,7 @@ window.addEventListener('load', async () => {
     $('modelBar').textContent = 'พร้อมใช้งาน';
     setTimeout(() => { $('modelBar').style.display = 'none'; }, 1200);
     $('btnCheckin').disabled = false;
+    $('btnCheckout').disabled = false;
     updateEnrollButton();
   } catch (err) {
     console.error(err);
@@ -739,21 +754,139 @@ const ERROR_TEXT = {
   ALREADY_CHECKED_IN: (e) => `${esc(e.full_name ?? 'คุณ')} เช็คชื่อคาบนี้ไปแล้ว`,
   SESSION_NOT_ACTIVE: () => 'คาบนี้หมดเวลาเช็คชื่อแล้ว หรือยังไม่ถึงเวลา',
   NO_FACE_TEMPLATES: () => 'ยังไม่มีนักศึกษาในกลุ่มนี้ลงทะเบียนใบหน้าเลย — ไปที่แท็บ "ลงทะเบียนหน้า" ก่อน',
+  NOT_CHECKED_IN: (e) => e.match_score != null ? `ไม่พบใบหน้าของคุณในรายชื่อที่เช็คชื่อเข้าคาบนี้ (คะแนนใกล้สุด ${e.match_score}) — ต้องเช็คชื่อเข้าก่อนถึงจะสแกนออกได้` : 'ยังไม่มีใครเช็คชื่อเข้าคาบนี้',
+  ALREADY_CHECKED_OUT: (e) => `${esc(e.full_name ?? 'คุณ')} สแกนออกคาบนี้ไปแล้ว${e.check_out_time ? ' เมื่อ ' + new Date(e.check_out_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.' : ''}`,
+  NOTE_LOCKED: () => 'เลยเวลาแก้หมายเหตุแล้ว (2 ชม.) ติดต่อเจ้าหน้าที่',
 };
 const errText = (e) => (ERROR_TEXT[e.code] ? ERROR_TEXT[e.code](e) : esc(e.message || e.code));
 
 let busy = false;
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+function setBusy(b) { busy = b; $('btnCheckin').disabled = b || !modelsReady; $('btnCheckout').disabled = b || !modelsReady; }
+
+// ตำแหน่งปัจจุบัน: ใช้ค่าจากแผนที่สดถ้ายังใหม่และแม่นพอ ไม่งั้นหาใหม่
+async function currentPosition() {
+  const fresh = livePos && Date.now() - livePos.t < 20000 && livePos.acc <= 60;
+  const pos = fresh ? livePos : await getGPS((msg) => setStatus('ciStatus', msg));
+  if (!liveWanted) startLiveLocation();
+  $('ciGps').textContent = `ตำแหน่ง ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} · แม่นยำ ±${Math.round(pos.acc)} ม.` +
+    (pos.acc > 100 ? ' (ค่อนข้างหยาบ — ถ้าระบบบอกว่าอยู่นอกห้อง ให้เปิด Wi-Fi แล้วลองใหม่)' : '');
+  return pos;
+}
+
+// ช่องหมายเหตุใต้ผลลัพธ์ (บันทึกผ่าน attendance_id ที่เครื่องนี้ได้รับ แก้ได้ภายใน 2 ชม.)
+function noteBoxHtml(attendanceId, { required = false, placeholder = 'หมายเหตุ (ถ้ามี)', value = '' } = {}) {
+  return `<div class="note-box ${required ? 'required' : ''}" data-att="${esc(attendanceId)}">
+    <label>${required ? '⚠️ กรุณาระบุเหตุผล' : 'หมายเหตุ (ไม่บังคับ)'}</label>
+    <textarea maxlength="300" placeholder="${esc(placeholder)}">${esc(value)}</textarea>
+    <div class="row"><span class="note-saved"></span><button class="btn btn-ghost btn-sm shrink">บันทึกหมายเหตุ</button></div>
+  </div>`;
+}
+function bindNoteBox(root) {
+  root.querySelectorAll('.note-box').forEach((box) => {
+    const btn = box.querySelector('button'), ta = box.querySelector('textarea'), msg = box.querySelector('.note-saved');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; msg.textContent = 'กำลังบันทึก…';
+      const r = await api('checkout', { action: 'note', attendance_id: box.dataset.att, note: ta.value });
+      btn.disabled = false;
+      msg.textContent = r.ok ? '✓ บันทึกแล้ว' : errText(r.error);
+      if (r.ok) box.classList.remove('required');
+    });
+  });
+}
+
+// จำคาบที่เช็คชื่อเข้าบนเครื่องนี้ไว้ เพื่อเตือนให้สแกนออกตอนใกล้จบคาบ
+function rememberCheckin(session, d) {
+  try {
+    const list = JSON.parse(localStorage.getItem('cph_open_checkins') || '[]').filter((x) => Date.parse(x.end) > Date.now() - 3600e3);
+    list.push({ id: d.attendance_id, name: d.full_name, course: session.course_code, room: session.room, end: `${session.class_date}T${session.end_time}:00+07:00` });
+    localStorage.setItem('cph_open_checkins', JSON.stringify(list));
+  } catch { /* ไม่มี storage ก็ข้าม */ }
+  updateOutReminder();
+}
+function forgetCheckin(attendanceId) {
+  try {
+    const list = JSON.parse(localStorage.getItem('cph_open_checkins') || '[]').filter((x) => x.id !== attendanceId);
+    localStorage.setItem('cph_open_checkins', JSON.stringify(list));
+  } catch { /* ข้าม */ }
+  updateOutReminder();
+}
+function updateOutReminder() {
+  let due = null;
+  try {
+    const now = Date.now();
+    due = JSON.parse(localStorage.getItem('cph_open_checkins') || '[]')
+      .find((x) => now >= Date.parse(x.end) - 20 * 60e3 && now <= Date.parse(x.end) + 30 * 60e3);
+  } catch { /* ข้าม */ }
+  $('btnCheckout').classList.toggle('due', !!due);
+  document.querySelector('.btn-row').classList.toggle('out-first', !!due);
+  $('outReminder').style.display = due ? 'block' : 'none';
+  if (due) $('outReminder').innerHTML = `⏰ <b>${esc(due.course)}</b> ใกล้จบคาบ (${fmtTime(due.end)} น.) — อย่าลืม<b>สแกนออก</b>ก่อนออกจากห้อง`;
+}
+updateOutReminder();
+setInterval(updateOutReminder, 60000);
+
+// ---- สแกนออก ----
+$('btnCheckout').addEventListener('click', async () => {
+  if (busy || !modelsReady) return;
+  setBusy(true);
+  $('sessionBox').innerHTML = ''; $('ciResult').innerHTML = '';
+  try {
+    const pos = await currentPosition();
+    setStatus('ciStatus', 'กำลังหาคาบที่สแกนออกได้…');
+    const s = await api('session', { latitude: pos.lat, longitude: pos.lng, location_id: ROOM_FROM_QR || undefined, purpose: 'checkout' });
+    if (!s.ok) throw new Error(errText(s.error));
+    if (!s.data.sessions.length) {
+      const n = s.data.nearest_out_of_zone;
+      throw new Error(n
+        ? `อยู่นอกพื้นที่ห้อง — ${esc(n.room)} ห่าง ${n.distance_meters} ม. (ต้องไม่เกิน ${n.radius_meters} ม.) สแกนออกได้เฉพาะในห้อง`
+        : 'ตอนนี้ไม่มีคาบที่สแกนออกได้ (สแกนออกได้ตั้งแต่เริ่มคาบ ถึงหลังจบคาบ 30 นาที)');
+    }
+    // ไม่ต้องให้เลือกคาบ — ระบบหาเองจากใบหน้าว่าคุณเช็คชื่อเข้าคาบไหน
+    const first = s.data.sessions[0];
+    clearStatus('ciStatus');
+    const scan = await runScan(`สแกนออก · ${first.room}`);
+    if (scan.cancelled) { setStatus('ciStatus', 'ยกเลิกการสแกนแล้ว', 'warn'); return; }
+    if (!scan.ok) throw new Error(scan.reason);
+
+    setStatus('ciStatus', 'กำลังยืนยันตัวตน…');
+    const c = await api('checkout', { schedule_ids: s.data.sessions.map((x) => x.schedule_id), embedding: scan.embedding, latitude: pos.lat, longitude: pos.lng, device_id: DEVICE_ID });
+    if (!c.ok) throw new Error(errText(c.error));
+    clearStatus('ciStatus');
+    const d = c.data;
+    const stayMin = Math.round((Date.parse(d.check_out_time) - Date.parse(d.check_in_time)) / 60000);
+    forgetCheckin(d.attendance_id);
+    $('ciResult').innerHTML = `
+      <div class="result ${d.left_early ? 'late' : 'out'}">
+        ${scan.snapshot ? snapHtml(scan.snapshot, d.full_name, d.student_code) : ''}
+        <div class="name">👋 ${esc(d.full_name)}</div>
+        <div class="line mono">${esc(d.student_code)}</div>
+        <div style="margin:10px 0 6px;"><span class="pill ${d.left_early ? 'late' : 'present'}">${d.left_early ? `ออกก่อนเวลา ${d.minutes_before_end} นาที` : 'สแกนออกแล้ว'}</span></div>
+        <div class="line">เข้า ${fmtTime(d.check_in_time)} น. → ออก ${fmtTime(d.check_out_time)} น. (อยู่ในห้อง ${stayMin} นาที) · ${esc(d.room)}</div>
+        <div class="line mono" style="margin-top:6px;font-size:11.5px;">ใบหน้า ${d.face_match_score} · ห่างห้อง ${d.distance_meters} ม.</div>
+        ${noteBoxHtml(d.attendance_id, d.left_early
+          ? { required: true, placeholder: 'เช่น ไม่สบาย, ไปพบแพทย์, อาจารย์อนุญาตให้ออกก่อน', value: d.note ?? '' }
+          : { value: d.note ?? '' })}
+      </div>`;
+    bindNoteBox($('ciResult'));
+    $('ciResult').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (err) {
+    stopCamera(); closeCamSheet();
+    setStatus('ciStatus', err.message, 'error');
+    $('ciStatus').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } finally {
+    setBusy(false);
+  }
+});
+
+// ---- เช็คชื่อเข้า ----
 $('btnCheckin').addEventListener('click', async () => {
   if (busy || !modelsReady) return;
-  busy = true; $('btnCheckin').disabled = true;
+  setBusy(true);
   $('sessionBox').innerHTML = ''; $('ciResult').innerHTML = ''; $('ciGps').textContent = '';
   try {
     // 1) ตำแหน่ง
-    const fresh = livePos && Date.now() - livePos.t < 20000 && livePos.acc <= 60;
-    const pos = fresh ? livePos : await getGPS((msg) => setStatus('ciStatus', msg));
-    if (!liveWanted) startLiveLocation();
-    $('ciGps').textContent = `ตำแหน่ง ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} · แม่นยำ ±${Math.round(pos.acc)} ม.` +
-      (pos.acc > 100 ? ' (ค่อนข้างหยาบ — ถ้าระบบบอกว่าอยู่นอกห้อง ให้เปิด Wi-Fi แล้วลองใหม่)' : '');
+    const pos = await currentPosition();
 
     // 2) หาคาบที่กำลังเรียน
     setStatus('ciStatus', 'กำลังหาคาบที่กำลังเรียน…');
@@ -797,14 +930,18 @@ $('btnCheckin').addEventListener('click', async () => {
         <div style="margin:10px 0 6px;"><span class="pill ${late ? 'late' : 'present'}">${late ? 'มาสาย' : 'มาปกติ'}</span></div>
         <div class="line">เช็คชื่อเวลา ${t} น. · ${esc(d.room)}</div>
         <div class="line mono" style="margin-top:6px;font-size:11.5px;">ใบหน้า ${d.face_match_score} · ห่างห้อง ${d.distance_meters} ม. · real ${scan.realAvg.toFixed(2)} · สแกน ${(scan.ms/1000).toFixed(1)} วิ (${scan.good}/${scan.frames})</div>
+        <div class="line" style="margin-top:8px;">จบคาบ ${esc(session.end_time)} น. — <b>อย่าลืมสแกนออก</b>ก่อนออกจากห้อง</div>
+        ${noteBoxHtml(d.attendance_id, { placeholder: late ? 'เหตุผลที่มาสาย (ถ้ามี)' : 'หมายเหตุ (ถ้ามี)' })}
       </div>`;
+    bindNoteBox($('ciResult'));
+    rememberCheckin(session, d);
     $('ciResult').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (err) {
     stopCamera(); closeCamSheet();
     setStatus('ciStatus', err.message, 'error');
     $('ciStatus').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } finally {
-    busy = false; $('btnCheckin').disabled = false;
+    setBusy(false);
   }
 });
 
@@ -917,12 +1054,12 @@ $('btnRecent').addEventListener('click', async () => {
   const r = await devCall('recent_attendance');
   if (!r.ok) return ($('recentBox').innerHTML = `<div class="status error">${errText(r.error)}</div>`);
   if (r.data.records.length === 0) return ($('recentBox').textContent = 'ยังไม่มีการเช็คชื่อ');
-  $('recentBox').innerHTML = `<table><thead><tr><th>เวลา</th><th>ชื่อ</th><th>คาบ</th><th>ผล</th></tr></thead><tbody>${
+  $('recentBox').innerHTML = `<table><thead><tr><th>เข้า→ออก</th><th>ชื่อ</th><th>คาบ</th><th>ผล</th></tr></thead><tbody>${
     r.data.records.map((x) => `<tr>
-      <td class="mono">${new Date(x.check_in_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</td>
+      <td class="mono">${fmtTime(x.check_in_time)}${x.check_out_time ? `<br><span style="color:var(--ink-muted)">→${fmtTime(x.check_out_time)}</span>` : ''}</td>
       <td>${esc(x.full_name)}<div class="mono" style="font-size:11px;color:var(--ink-muted)">${esc(x.student_code)} · ${x.face_match_score} · ${x.distance_meters}ม.</div></td>
       <td>${esc(x.course)}<div style="font-size:11px;color:var(--ink-muted)">${esc(x.session)}</div></td>
-      <td><span class="pill ${x.status === 'late' ? 'late' : 'present'}">${x.status === 'late' ? 'สาย' : 'ปกติ'}</span></td>
+      <td><span class="pill ${x.status === 'late' ? 'late' : 'present'}">${x.status === 'late' ? 'สาย' : 'ปกติ'}</span>${x.left_early ? '<br><span class="pill late" style="margin-top:3px">ออกก่อน</span>' : ''}${x.note ? `<div style="font-size:11px;color:var(--ink-muted);margin-top:3px">📝 ${esc(x.note)}</div>` : ''}</td>
     </tr>`).join('')}</tbody></table>`;
 });
 

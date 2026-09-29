@@ -4,7 +4,8 @@
 //   1) ถ้ามี location_id (สแกน QR หน้าห้อง) → ใช้ห้องนั้นเลย
 //   2) ถ้าไม่มี → เอาคาบที่กำลังเรียนและตำแหน่งอยู่ในรัศมี ถ้ามีคาบเดียว = resolved: single
 //   3) ถ้ามีหลายคาบในรัศมี → resolved: ambiguous ให้ผู้ใช้เลือก
-// body: { latitude, longitude, location_id? }
+// body: { latitude, longitude, location_id?, purpose?: 'checkin' | 'checkout' }
+//   checkout → ช่วงเวลาตั้งแต่เริ่มคาบ ถึงหลังจบคาบ 30 นาที
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -24,6 +25,7 @@ function getServiceRoleKey(): string {
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, getServiceRoleKey());
 
 const EARLY_MINUTES = 15;
+const CHECKOUT_GRACE_MIN = 30;
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
@@ -48,9 +50,10 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ data: null, error: { code: 'METHOD_NOT_ALLOWED', message: 'ใช้ POST เท่านั้น' } }, 405);
 
-  let body: { latitude?: number; longitude?: number; location_id?: string };
+  let body: { latitude?: number; longitude?: number; location_id?: string; purpose?: string };
   try { body = await req.json(); } catch { return json({ data: null, error: { code: 'BAD_REQUEST', message: 'JSON body ไม่ถูกต้อง' } }, 400); }
   const { latitude, longitude, location_id } = body;
+  const forCheckout = body.purpose === 'checkout';
   if (latitude == null || longitude == null) {
     return json({ data: null, error: { code: 'BAD_REQUEST', message: 'ต้องส่ง latitude, longitude' } }, 400);
   }
@@ -74,14 +77,18 @@ Deno.serve(async (req: Request) => {
     .map((r) => {
       const start = bkk(r.class_date, r.start_time).getTime();
       const end = bkk(r.class_date, r.end_time).getTime();
-      return { r, start, end, running: t >= start && t <= end, open: t >= start - EARLY_MINUTES * 60000 && t <= end };
+      const open = forCheckout
+        ? t >= start && t <= end + CHECKOUT_GRACE_MIN * 60000
+        : t >= start - EARLY_MINUTES * 60000 && t <= end;
+      return { r, start, end, running: t >= start && t <= end, open };
     })
     .filter((x) => x.open);
 
   // คาบต่อเนื่องของกลุ่มเดียวกันในห้องเดียวกัน (เช่น ช่วง 15 นาทีก่อนคาบถัดไป) — เลือกคาบที่กำลังเรียนอยู่ก่อน
   const byKey = new Map<string, typeof active[number]>();
   for (const x of active) {
-    const key = `${x.r.section_id}|${x.r.location_id}`;
+    // สแกนออกไม่รวมคาบ: คนที่เข้าคาบก่อนหน้าต้องสแกนออกคาบนั้นได้ แม้คาบถัดไปเริ่มแล้ว
+    const key = forCheckout ? x.r.schedule_id : `${x.r.section_id}|${x.r.location_id}`;
     const cur = byKey.get(key);
     if (!cur || (x.running && !cur.running) || (x.running === cur.running && x.start < cur.start)) byKey.set(key, x);
   }
