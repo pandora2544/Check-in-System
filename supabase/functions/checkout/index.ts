@@ -6,47 +6,15 @@
 //   { action: 'note', attendance_id, note }                       → เพิ่ม/แก้หมายเหตุของตัวเอง
 //        (attendance_id เป็น uuid ที่เครื่องได้รับตอนเช็คชื่อสำเร็จเท่านั้น, แก้ได้ภายใน 2 ชม.)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { CORS, bkkAt, fail, json, serviceClient } from '../_shared/http.ts';
+import { MATCH_THRESHOLD, matchAmong, validEmbedding } from '../_shared/face.ts';
+import { haversineMeters } from '../_shared/geo.ts';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function getServiceRoleKey(): string {
-  const raw = Deno.env.get('SUPABASE_SECRET_KEYS');
-  if (raw) {
-    try { const p = JSON.parse(raw); if (p?.default) return p.default; } catch { /* ใช้ของเดิม */ }
-  }
-  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-}
-const supabase = createClient(Deno.env.get('SUPABASE_URL')!, getServiceRoleKey());
-
-const MATCH_THRESHOLD = 0.6;
+const supabase = serviceClient();
 const CHECKOUT_GRACE_MIN = 30;   // สแกนออกได้ถึงหลังจบคาบกี่นาที
 const EARLY_LEAVE_MIN = 10;      // ออกก่อนจบคาบเกินกี่นาที = ออกก่อนเวลา
 const NOTE_EDIT_WINDOW_MIN = 120;
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000, toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return -1;
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
-}
-const bkk = (date: string, time: string) => new Date(`${date}T${time}+07:00`);
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
-}
-const fail = (code: string, message: string, status: number, extra: Record<string, unknown> = {}) =>
-  json({ data: null, error: { code, message, ...extra } }, status);
+const bkk = bkkAt;
 
 async function saveNote(attendanceId: string, note: string) {
   const text = note.trim().slice(0, 300);
@@ -77,7 +45,7 @@ Deno.serve(async (req: Request) => {
     // รับได้หลายคาบ (คาบที่เปิดสแกนออกอยู่ในพื้นที่นี้) — ระบบหาเองว่าคนนี้เช็คชื่อเข้าคาบไหน
     const { embedding, latitude, longitude } = body;
     const ids = [...new Set([...(body.schedule_ids ?? []), ...(body.schedule_id ? [body.schedule_id] : [])])].slice(0, 10);
-    if (ids.length === 0 || !Array.isArray(embedding) || embedding.length < 64 || latitude == null || longitude == null) {
+    if (ids.length === 0 || !validEmbedding(embedding) || latitude == null || longitude == null) {
       return fail('BAD_REQUEST', 'ข้อมูลไม่ครบ (ต้องการ schedule_ids, embedding, latitude, longitude)', 400);
     }
 
@@ -108,14 +76,8 @@ Deno.serve(async (req: Request) => {
       .in('schedule_id', inZone.map((v) => v.s.schedule_id))
       .in('status', ['present', 'late']); // คนที่ถูกบันทึกขาด/ลา สแกนออกไม่ได้
     if (!checkedIn || checkedIn.length === 0) return fail('NOT_CHECKED_IN', 'ยังไม่มีใครเช็คชื่อเข้าคาบนี้', 409);
-    const { data: templates } = await supabase
-      .from('face_templates').select('student_id, embedding_vector').in('student_id', [...new Set(checkedIn.map((r) => r.student_id))]);
-
-    let bestStudentId: string | null = null, bestSim = -1;
-    for (const t of templates ?? []) {
-      const sim = cosineSimilarity(JSON.parse(t.embedding_vector), embedding);
-      if (sim > bestSim) { bestSim = sim; bestStudentId = t.student_id; }
-    }
+    const best = await matchAmong(supabase, embedding, [...new Set<string>(checkedIn.map((r) => String(r.student_id)))]);
+    const bestStudentId = best?.student_id ?? null, bestSim = best?.similarity ?? -1;
     if (!bestStudentId || bestSim < MATCH_THRESHOLD) {
       return fail('NOT_CHECKED_IN', 'ไม่พบใบหน้านี้ในรายชื่อที่เช็คชื่อเข้าคาบนี้ — เช็คชื่อเข้าแล้วหรือยัง?', 422, { match_score: Number(Math.max(0, bestSim).toFixed(3)) });
     }

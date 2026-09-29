@@ -3,54 +3,13 @@
 // นักศึกษาไม่ล็อกอิน (verify_jwt: false) — ใช้ service role ฝั่งเซิร์ฟเวอร์เท่านั้น
 // เวลาใน schedules เก็บเป็นเวลาท้องถิ่นไทย (Asia/Bangkok, UTC+7)
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { CORS, bkkAt, fail, json, serviceClient } from '../_shared/http.ts';
+import { MATCH_THRESHOLD, matchAmong, validEmbedding } from '../_shared/face.ts';
+import { haversineMeters } from '../_shared/geo.ts';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-function getServiceRoleKey(): string {
-  const raw = Deno.env.get('SUPABASE_SECRET_KEYS');
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed?.default) return parsed.default;
-    } catch { /* ใช้ของเดิม */ }
-  }
-  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-}
-
-const supabase = createClient(Deno.env.get('SUPABASE_URL')!, getServiceRoleKey());
-
-// ค่าเริ่มต้น ยังไม่ปรับจูนกับอุปกรณ์จริง — ดูคะแนนที่ตอบกลับไปประกอบการปรับ
-const MATCH_THRESHOLD = 0.6;
+const supabase = serviceClient();
 const EARLY_MINUTES = 15; // เปิดให้เช็คชื่อก่อนคาบเริ่มได้กี่นาที
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return -1;
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
-}
-
-const bkk = (date: string, time: string) => new Date(`${date}T${time}+07:00`);
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
-}
-const fail = (code: string, message: string, status: number, extra: Record<string, unknown> = {}) =>
-  json({ data: null, error: { code, message, ...extra } }, status);
+const bkk = bkkAt;
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -60,7 +19,7 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return fail('BAD_REQUEST', 'JSON body ไม่ถูกต้อง', 400); }
 
   const { schedule_id, embedding, latitude, longitude, device_id } = body;
-  if (!schedule_id || !Array.isArray(embedding) || embedding.length < 64 || latitude == null || longitude == null) {
+  if (!schedule_id || !validEmbedding(embedding) || latitude == null || longitude == null) {
     return fail('BAD_REQUEST', 'ข้อมูลไม่ครบ (ต้องการ schedule_id, embedding, latitude, longitude)', 400);
   }
 
@@ -99,18 +58,11 @@ Deno.serve(async (req: Request) => {
     const studentIds = (enrollments ?? []).map((e) => e.student_id);
     if (studentIds.length === 0) return fail('NO_ENROLLED_STUDENTS', 'กลุ่มเรียนนี้ยังไม่มีนักศึกษา', 404);
 
-    const { data: templates } = await supabase.from('face_templates').select('student_id, embedding_vector').in('student_id', studentIds);
-    if (!templates || templates.length === 0) {
-      return fail('NO_FACE_TEMPLATES', 'ยังไม่มีนักศึกษาในกลุ่มนี้ลงทะเบียนใบหน้า', 404);
-    }
-
-    let bestStudentId: string | null = null;
-    let bestSim = -1;
-    for (const t of templates) {
-      const sim = cosineSimilarity(JSON.parse(t.embedding_vector), embedding);
-      if (sim > bestSim) { bestSim = sim; bestStudentId = t.student_id; }
-    }
-    if (!bestStudentId || bestSim < MATCH_THRESHOLD) {
+    // เทียบในฐานข้อมูล (pgvector) — ไม่ต้องดึง embedding ของทั้งกลุ่มมาที่ function
+    const best = await matchAmong(supabase, embedding, studentIds);
+    if (!best) return fail('NO_FACE_TEMPLATES', 'ยังไม่มีนักศึกษาในกลุ่มนี้ลงทะเบียนใบหน้า', 404);
+    const bestStudentId = best.student_id, bestSim = best.similarity;
+    if (bestSim < MATCH_THRESHOLD) {
       return fail('FACE_MISMATCH', 'ไม่พบใบหน้านี้ในรายชื่อของกลุ่มเรียน', 422, { match_score: Number(Math.max(0, bestSim).toFixed(3)) });
     }
 
