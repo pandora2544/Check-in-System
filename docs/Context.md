@@ -12,7 +12,8 @@
 | อัปเดตล่าสุด | ย้ายไปโปรเจกต์ Supabase ที่แยกเฉพาะระบบนี้แล้ว: org/project **"cph-smart-checkin"** (`rpaqvrpuhdadhirzrlrf`, ap-northeast-2) — ไม่ต้องใช้ schema แยก `lab_checkin` อีกต่อไป เพราะไม่ได้ใช้ร่วมกับ "rov-system" แล้ว |
 | Stack ที่ใช้จริง (ยืนยันล่าสุด) | **GitHub** (เก็บโค้ด/CI) + **Supabase** (DB + Auth + Edge Functions) + **Vercel** (frontend hosting) — **ตัด Cloudflare ออกจาก stack ทั้งหมด** (ไม่ใช้ Cloudflare Pages/Tunnel/Workers แล้ว) |
 | ขั้นตอนปัจจุบัน | System Design + UI/UX PWA + API Spec + UI/UX แอดมิน/อาจารย์ + Working Prototype + SQL Schema (รันแล้วบนโปรเจกต์ใหม่ ครบ 15 ตาราง + RLS ครบทุกตาราง) + Edge Function `checkin` (deploy สำเร็จแล้วบนโปรเจกต์ใหม่ `public` schema ปกติ, `verify_jwt: false`) |
-| ขั้นตอนถัดไปที่รอทำ | ตั้ง GitHub repo (รอชื่อ owner/repo จากผู้ใช้) + ผูก Vercel project กับ repo นั้นสำหรับ deploy frontend, seed ข้อมูลทดสอบจริง (ต้องสร้าง auth user ก่อน) |
+| Deploy จริง | GitHub `pandora2544/Check-in-System` (branch `main`) → Vercel project `cph-smart-checkin` (team `cphsmartcheckin-7827`, root dir `web/`, auto-deploy ทุก push) → https://cph-smart-checkin.vercel.app — Supabase `rpaqvrpuhdadhirzrlrf` |
+| ขั้นตอนถัดไปที่รอทำ | ต่อหน้าเว็บ `web/` เข้ากับ Supabase จริง (ตอนนี้ prototype ยังเก็บข้อมูลในหน่วยความจำ), seed ข้อมูลทดสอบจริง (ต้องสร้าง auth user ก่อน) |
 
 ---
 
