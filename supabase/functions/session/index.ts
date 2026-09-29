@@ -101,6 +101,8 @@ Deno.serve(async (req: Request) => {
       late_threshold_minutes: r.lab_sections.late_threshold_minutes,
       distance_meters: Number(distance.toFixed(1)),
       radius_meters: r.locations.radius_meters,
+      latitude: r.locations.latitude,
+      longitude: r.locations.longitude,
       in_zone: distance <= r.locations.radius_meters,
     };
   }).sort((a, b) => a.distance_meters - b.distance_meters);
@@ -112,6 +114,8 @@ Deno.serve(async (req: Request) => {
     data: {
       resolved,
       sessions: inZone,
+      // ทุกห้องที่มีคาบเปิดเช็คชื่ออยู่ตอนนี้ (ใกล้สุดก่อน) — ใช้วาดแผนที่พื้นที่เช็คชื่อบนหน้าเว็บ
+      active: sessions.slice(0, 20),
       // ไว้ช่วยบอกผู้ใช้ว่าห้องที่มีคาบอยู่ใกล้สุดห่างเท่าไหร่ (กรณีอยู่นอกรัศมี)
       nearest_out_of_zone: inZone.length === 0 ? sessions[0] ?? null : null,
       server_time_bkk: new Date(t + 7 * 3600_000).toISOString().slice(0, 16).replace('T', ' '),

@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/human@3.3.6/dist/human.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root{
     --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
@@ -72,6 +74,23 @@
   .cam-sheet.lit .cam-title, .cam-sheet.lit .cam-res{ color:var(--ink-muted); }
   .cam-sheet.lit .cam-cancel{ color:var(--ink); border-color:var(--line); }
   .cam-sheet.lit .scanbar{ background:var(--line); }
+  .loc-card{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; margin:10px 0 12px; }
+  .loc-map{ height:190px; background:#e4ebe6; position:relative; z-index:0; }
+  .loc-body{ padding:10px 12px; }
+  .loc-status{ font-size:14px; font-weight:600; line-height:1.5; display:flex; gap:8px; align-items:flex-start; }
+  .loc-status .dot{ width:10px; height:10px; border-radius:50%; margin-top:6px; flex-shrink:0; background:var(--ink-muted); }
+  .loc-status.in .dot{ background:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.18); }
+  .loc-status.out .dot{ background:var(--brick); box-shadow:0 0 0 4px rgba(178,58,46,.15); }
+  .loc-status.none .dot{ background:var(--amber); }
+  .loc-status.in{ color:#166534; } .loc-status.out{ color:var(--brick-ink); }
+  .loc-sub{ font-size:12.5px; color:var(--ink-muted); margin-top:2px; line-height:1.5; }
+  .loc-coords{ font-size:11px; color:var(--ink-muted); margin-top:4px; }
+  .loc-start{ margin-top:8px; }
+  .room-label{ background:rgba(255,255,255,.92); border:none; border-radius:6px; font-family:'IBM Plex Sans Thai',sans-serif; font-size:11px; font-weight:600; padding:1px 6px; box-shadow:0 1px 2px rgba(0,0,0,.15); }
+  .room-label::before{ display:none; }
+  .cam-loc{ font-size:13px; font-weight:600; text-align:center; margin:4px 8px; color:#86efac; }
+  .cam-loc.out{ color:#fca5a5; }
+  .cam-sheet.lit .cam-loc{ color:#166534; } .cam-sheet.lit .cam-loc.out{ color:var(--brick-ink); }
   .scanbar{ max-width:220px; height:6px; margin:6px auto 2px; background:var(--line); border-radius:3px; overflow:hidden; display:none; }
   .scanbar.on{ display:block; }
   .scanbar i{ display:block; height:100%; width:0; background:var(--teal); transition:width .15s; }
@@ -130,6 +149,15 @@
   <section class="panel active" id="panel-checkin">
     <div class="card">
       <h2>เช็คชื่อคาบนี้</h2>
+      <div class="loc-card">
+        <div class="loc-map" id="locMap"></div>
+        <div class="loc-body">
+          <div class="loc-status" id="locStatus"><span class="dot"></span><span id="locText">กำลังหาตำแหน่งของคุณ…</span></div>
+          <div class="loc-sub" id="locSub"></div>
+          <div class="loc-coords mono" id="locCoords"></div>
+          <button class="btn btn-ghost btn-sm loc-start" id="btnLocStart" style="display:none">แสดงตำแหน่งของฉัน</button>
+        </div>
+      </div>
       <div class="muted" id="roomHint">กดปุ่มด้านล่าง ระบบจะตรวจตำแหน่ง หาคาบที่กำลังเรียน แล้วสแกนใบหน้าให้เอง ไม่ต้องล็อกอิน</div>
       <div class="gap"></div>
       <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อ</button>
@@ -218,6 +246,7 @@
   <div class="scanbar on" id="camBar"><i></i></div>
   <div class="cam-hint" id="camHint">กำลังเปิดกล้อง…</div>
   <div class="cam-title" id="camTitle"></div>
+  <div class="cam-loc" id="camLoc"></div>
   <div class="cam-res" id="camRes"></div>
   <button class="btn cam-cancel" id="camCancel">ยกเลิก</button>
 </div>
@@ -331,7 +360,7 @@ function locError(code) {
   if (code === 1) return new Error(`เบราว์เซอร์ยังไม่ได้รับอนุญาตให้ใช้ตำแหน่ง<br>${HELP_PERMISSION}`);
   return new Error(`หาตำแหน่งเครื่องไม่ได้<br>${HELP_UNAVAILABLE}`);
 }
-const toPos = (p) => ({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy });
+const toPos = (p) => ({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, t: Date.now() });
 
 function getGPS(onProgress = () => {}) {
   if (!navigator.geolocation) return Promise.reject(new Error('เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง'));
@@ -374,6 +403,7 @@ document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () 
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
   document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + t.dataset.tab));
   stopCamera();
+  if (t.dataset.tab === 'checkin') resumeLiveLocation(); else pauseLiveLocation();
 }));
 
 // ============================================================
@@ -563,6 +593,139 @@ async function scanFace(videoEl, wrapEl, hintEl, barEl) {
 }
 
 // ============================================================
+// ตำแหน่งแบบเรียลไทม์ + แผนที่พื้นที่เช็คชื่อ
+// ติดตามเฉพาะตอนเปิดแท็บเช็คชื่อและหน้าจอแสดงอยู่ (ประหยัดแบต) — ไม่ส่งตำแหน่งไปเก็บ ใช้แค่ถามว่ามีคาบใกล้ๆ ไหม
+// ============================================================
+let livePos = null, liveZones = null, liveWatch = null, liveWanted = false;
+let lastZoneFetch = 0, lastZonePos = null, zoneFetching = false;
+let lmap = null, lUser = null, lAcc = null, lRooms = null, lFitted = false;
+const ZONE_REFRESH_MS = 60000, ZONE_REFRESH_MOVE_M = 150;
+
+function hav(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lon2 - lon1) / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+const fmtDist = (m) => (m < 1000 ? `${Math.round(m)} ม.` : `${(m / 1000).toFixed(2)} กม.`);
+
+// ห้องที่มีคาบเปิดอยู่ + ระยะจากตำแหน่งล่าสุด (คำนวณในเครื่องทุกครั้งที่ขยับ ไม่ต้องถามเซิร์ฟเวอร์)
+function zonesNow() {
+  if (!liveZones || !livePos) return [];
+  return liveZones.map((z) => {
+    const d = hav(livePos.lat, livePos.lng, z.latitude, z.longitude);
+    return { ...z, distance_meters: d, in_zone: d <= z.radius_meters };
+  }).sort((a, b) => a.distance_meters - b.distance_meters);
+}
+
+function renderLocation() {
+  const st = $('locStatus'), text = $('locText'), sub = $('locSub');
+  if (!livePos) return;
+  $('locCoords').textContent = `Lat ${livePos.lat.toFixed(6)}, Lng ${livePos.lng.toFixed(6)} · แม่นยำ ±${Math.round(livePos.acc)} ม.`;
+  const zones = zonesNow();
+  const inside = zones.filter((z) => z.in_zone);
+  let cls, msg, detail = '', camMsg;
+  if (liveZones === null) { cls = ''; msg = 'กำลังตรวจพื้นที่เช็คชื่อ…'; camMsg = ''; }
+  else if (inside.length) {
+    const z = inside[0];
+    cls = 'in'; msg = `อยู่ในพื้นที่เช็คชื่อ · ${z.room}`;
+    detail = inside.map((x) => `${esc(x.course_code)} กลุ่ม ${esc(x.section_no)} · ${esc(x.start_time)}–${esc(x.end_time)} น.`).join('<br>') + ` · ห่างจุดกลางห้อง ${fmtDist(z.distance_meters)}`;
+    camMsg = `✓ อยู่ในพื้นที่ · ${z.room}`;
+  } else if (zones.length) {
+    const z = zones[0];
+    cls = 'out'; msg = `อยู่นอกพื้นที่เช็คชื่อ`;
+    detail = `ห้องที่มีคาบใกล้สุด: ${esc(z.room)} (${esc(z.course_code)}) ห่าง ${fmtDist(z.distance_meters)} — ต้องเข้าใกล้ไม่เกิน ${z.radius_meters} ม.`;
+    camMsg = `✗ นอกพื้นที่ · ห่าง ${esc(z.room)} ${fmtDist(z.distance_meters)}`;
+  } else { cls = 'none'; msg = 'ตอนนี้ไม่มีคาบเรียนที่เปิดเช็คชื่อ'; detail = ROOM_FROM_QR ? 'ห้องจาก QR นี้ยังไม่มีคาบในช่วงเวลานี้' : ''; camMsg = ''; }
+  if (livePos.acc > 60) detail += `${detail ? '<br>' : ''}⚠️ ตำแหน่งยังหยาบ (±${Math.round(livePos.acc)} ม.) — เปิด Wi-Fi หรือรอสักครู่ให้แม่นขึ้น`;
+  st.className = 'loc-status ' + cls; text.textContent = msg; sub.innerHTML = detail;
+  $('camLoc').textContent = camMsg; $('camLoc').className = 'cam-loc' + (cls === 'out' ? ' out' : '');
+  drawMap(zones);
+}
+
+function drawMap(zones) {
+  if (!window.L || !livePos) return;
+  if (!lmap) {
+    lmap = L.map('locMap', { zoomControl: false, attributionControl: true }).setView([livePos.lat, livePos.lng], 17);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(lmap);
+    lRooms = L.layerGroup().addTo(lmap);
+    lAcc = L.circle([livePos.lat, livePos.lng], { radius: livePos.acc, color: '#2563eb', weight: 1, fillOpacity: 0.08 }).addTo(lmap);
+    lUser = L.circleMarker([livePos.lat, livePos.lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#2563eb', fillOpacity: 1 }).addTo(lmap);
+  }
+  lUser.setLatLng([livePos.lat, livePos.lng]); lAcc.setLatLng([livePos.lat, livePos.lng]).setRadius(livePos.acc);
+  lRooms.clearLayers();
+  const seen = new Set();
+  for (const z of zones) {
+    if (seen.has(z.location_id)) continue; seen.add(z.location_id);
+    const color = z.in_zone ? '#16a34a' : '#ea580c';
+    L.circle([z.latitude, z.longitude], { radius: z.radius_meters, color, weight: 2, fillColor: color, fillOpacity: 0.15 })
+      .bindTooltip(z.room, { permanent: true, direction: 'top', className: 'room-label', offset: [0, -4] }).addTo(lRooms);
+  }
+  // จัดมุมกล้องแผนที่ครั้งแรก: ให้เห็นทั้งตัวเราและห้องใกล้สุด (ถ้าอยู่ไม่ไกลเกิน 3 กม.)
+  if (!lFitted && liveZones !== null) {
+    lFitted = true;
+    const near = zones[0];
+    if (near && near.distance_meters < 3000 && near.distance_meters > near.radius_meters) {
+      lmap.fitBounds(L.latLngBounds([[livePos.lat, livePos.lng], [near.latitude, near.longitude]]).pad(0.35), { maxZoom: 18 });
+    } else lmap.setView([livePos.lat, livePos.lng], 18);
+  } else if (lFitted && !lmap.getBounds().pad(-0.1).contains([livePos.lat, livePos.lng])) {
+    lmap.panTo([livePos.lat, livePos.lng]);
+  }
+}
+
+async function refreshZones(force = false) {
+  if (!livePos || zoneFetching) return;
+  const moved = lastZonePos ? hav(lastZonePos.lat, lastZonePos.lng, livePos.lat, livePos.lng) : Infinity;
+  if (!force && Date.now() - lastZoneFetch < ZONE_REFRESH_MS && moved < ZONE_REFRESH_MOVE_M) return;
+  zoneFetching = true;
+  const r = await api('session', { latitude: livePos.lat, longitude: livePos.lng, location_id: ROOM_FROM_QR || undefined });
+  zoneFetching = false;
+  lastZoneFetch = Date.now(); lastZonePos = { ...livePos };
+  if (r.ok) liveZones = (r.data.active ?? []).filter((z) => z.latitude != null);
+  renderLocation();
+}
+
+function startLiveLocation() {
+  liveWanted = true;
+  $('btnLocStart').style.display = 'none';
+  if (!navigator.geolocation || liveWatch != null) return;
+  if (!livePos) $('locText').textContent = 'กำลังหาตำแหน่งของคุณ…';
+  liveWatch = navigator.geolocation.watchPosition(
+    (p) => { livePos = toPos(p); renderLocation(); refreshZones(); },
+    (e) => {
+      if (e.code === 1) {
+        stopWatch(); liveWanted = false;
+        $('locStatus').className = 'loc-status out'; $('locText').textContent = 'ยังไม่ได้อนุญาตให้ใช้ตำแหน่ง';
+        $('locSub').innerHTML = IN_APP ? openExternalHtml() : HELP_PERMISSION;
+      } else if (!livePos) {
+        // GPS ในอาคารมักไม่ตอบ → ขอตำแหน่งจาก Wi-Fi/เครือข่ายแทนหนึ่งครั้ง แล้วรอ GPS ต่อ
+        navigator.geolocation.getCurrentPosition((p) => { livePos = toPos(p); renderLocation(); refreshZones(true); }, () => {
+          $('locText').textContent = 'หาตำแหน่งไม่ได้'; $('locSub').innerHTML = IN_APP ? openExternalHtml() : HELP_UNAVAILABLE;
+        }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 });
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+  );
+}
+function stopWatch() { if (liveWatch != null) navigator.geolocation.clearWatch(liveWatch); liveWatch = null; }
+function pauseLiveLocation() { stopWatch(); }
+function resumeLiveLocation() { if (liveWanted && !document.hidden && $('panel-checkin').classList.contains('active')) startLiveLocation(); }
+document.addEventListener('visibilitychange', () => (document.hidden ? pauseLiveLocation() : resumeLiveLocation()));
+setInterval(() => { if (liveWatch != null) refreshZones(); }, 30000); // คาบเปลี่ยนตามเวลา แม้ไม่ได้ขยับ
+
+$('btnLocStart').addEventListener('click', startLiveLocation);
+window.addEventListener('load', () => { if (livePos) renderLocation(); }); // Leaflet โหลดเสร็จทีหลัง → วาดแผนที่
+(async () => {
+  let state = 'prompt';
+  try { state = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch { /* Safari รุ่นเก่า */ }
+  if (state === 'granted') startLiveLocation();
+  else {
+    $('locText').textContent = 'เปิดตำแหน่งเพื่อดูว่าคุณอยู่ในพื้นที่เช็คชื่อหรือไม่';
+    if (state === 'denied') $('locSub').innerHTML = IN_APP ? openExternalHtml() : HELP_PERMISSION;
+    $('btnLocStart').style.display = 'inline-block';
+  }
+})();
+
+// ============================================================
 // เช็คชื่อ
 // ============================================================
 if (ROOM_FROM_QR) {
@@ -586,7 +749,9 @@ $('btnCheckin').addEventListener('click', async () => {
   $('sessionBox').innerHTML = ''; $('ciResult').innerHTML = ''; $('ciGps').textContent = '';
   try {
     // 1) ตำแหน่ง
-    const pos = await getGPS((msg) => setStatus('ciStatus', msg));
+    const fresh = livePos && Date.now() - livePos.t < 20000 && livePos.acc <= 60;
+    const pos = fresh ? livePos : await getGPS((msg) => setStatus('ciStatus', msg));
+    if (!liveWanted) startLiveLocation();
     $('ciGps').textContent = `ตำแหน่ง ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} · แม่นยำ ±${Math.round(pos.acc)} ม.` +
       (pos.acc > 100 ? ' (ค่อนข้างหยาบ — ถ้าระบบบอกว่าอยู่นอกห้อง ให้เปิด Wi-Fi แล้วลองใหม่)' : '');
 
