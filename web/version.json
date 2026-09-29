@@ -1,0 +1,5 @@
+{
+  "version": "__APP_VERSION__",
+  "min_build": "000000000000",
+  "note": "min_build = YYYYMMDDHHmm (UTC) — เครื่องที่เปิดเวอร์ชันเก่ากว่านี้จะอัปเดตเองทันที (ใช้ตอนแก้ด่วน) · version ถูกแทนตอน build"
+}

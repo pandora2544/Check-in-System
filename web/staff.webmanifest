@@ -1,0 +1,17 @@
+{
+  "id": "/staff",
+  "name": "CPH Smart Check-in — หน้าอาจารย์",
+  "short_name": "เช็คชื่อ (อาจารย์)",
+  "description": "ปฏิทินแล็บ ดูการเข้าเรียนสด เช็คชื่อแทน ใบเซ็นชื่อ",
+  "lang": "th",
+  "start_url": "/staff?source=pwa",
+  "scope": "/staff",
+  "display": "standalone",
+  "background_color": "#EFF2EF",
+  "theme_color": "#3C6E58",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

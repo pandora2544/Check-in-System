@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "CPH Smart Check-in — เช็คชื่อเข้าแล็บ",
+  "short_name": "เช็คชื่อแล็บ",
+  "description": "เช็คชื่อเข้าเรียนปฏิบัติการด้วยการสแกนใบหน้าและตำแหน่ง",
+  "lang": "th",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EFF2EF",
+  "theme_color": "#3C6E58",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
