@@ -53,7 +53,9 @@
   .video-wrap.on{ display:block; }
   .video-wrap.good{ border-color:var(--teal); }
   video{ width:100%; height:100%; object-fit:cover; display:block; transform:scaleX(-1); }
-  .video-wrap canvas{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); pointer-events:none; }
+  .video-wrap .guide{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .video-wrap .guide .oval{ fill:none; stroke:rgba(255,255,255,.9); stroke-width:2.5; stroke-dasharray:3 2.2; vector-effect:non-scaling-stroke; transition:stroke .2s; }
+  .video-wrap.aligned .guide .oval{ stroke:#5EEAD4; stroke-dasharray:none; stroke-width:3.5; }
   .scanbar{ max-width:220px; height:6px; margin:6px auto 2px; background:var(--line); border-radius:3px; overflow:hidden; display:none; }
   .scanbar.on{ display:block; }
   .scanbar i{ display:block; height:100%; width:0; background:var(--teal); transition:width .15s; }
@@ -116,7 +118,7 @@
       <div class="gap"></div>
       <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อ</button>
       <div id="sessionBox"></div>
-      <div class="video-wrap" id="ciWrap"><video id="ciVideo" autoplay muted playsinline></video><canvas id="ciCanvas"></canvas></div>
+      <div class="video-wrap" id="ciWrap"><video id="ciVideo" autoplay muted playsinline></video><svg class="guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><mask id="ciMask"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="51" rx="27" ry="35" fill="#000"/></mask></defs><rect width="100" height="100" fill="rgba(0,0,0,.38)" mask="url(#ciMask)"/><ellipse class="oval" cx="50" cy="51" rx="27" ry="35"/></svg></div>
       <div class="scanbar" id="ciBar"><i></i></div>
       <div class="cam-res" id="ciRes"></div>
       <div class="scan-hint" id="ciHint"></div>
@@ -143,7 +145,7 @@
           <span>ข้าพเจ้ายินยอมให้ระบบเก็บ <b>ค่าคุณลักษณะใบหน้า (face embedding)</b> ซึ่งเป็นข้อมูลชีวภาพตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล มาตรา 26 เพื่อใช้ยืนยันตัวตนในการเช็คชื่อเข้าเรียนเท่านั้น ระบบไม่เก็บภาพใบหน้า และจะลบข้อมูลเมื่อพ้นสภาพนักศึกษา</span>
         </label>
         <button class="btn btn-primary" id="btnEnrollCam" disabled>เปิดกล้องและสแกนใบหน้า</button>
-        <div class="video-wrap" id="enWrap"><video id="enVideo" autoplay muted playsinline></video><canvas id="enCanvas"></canvas></div>
+        <div class="video-wrap" id="enWrap"><video id="enVideo" autoplay muted playsinline></video><svg class="guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><mask id="enMask"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="51" rx="27" ry="35" fill="#000"/></mask></defs><rect width="100" height="100" fill="rgba(0,0,0,.38)" mask="url(#enMask)"/><ellipse class="oval" cx="50" cy="51" rx="27" ry="35"/></svg></div>
         <div class="scanbar" id="enBar"><i></i></div>
         <div class="cam-res" id="enRes"></div>
         <div class="scan-hint" id="enHint"></div>
@@ -223,8 +225,11 @@ const GOOD_FRAMES_NEEDED = 5;   // ต้องได้เฟรมผ่าน
 const MIN_GOOD_RATIO = 0.3;     // สัดส่วนเฟรมผ่านขั้นต่ำ (รูปถ่าย/หน้าจอมักผ่านแค่บางเฟรม)
 const SCAN_MIN_MS = 1200;       // สแกนอย่างน้อย
 const SCAN_MAX_MS = 8000;       // สแกนนานสุดก่อนแจ้งว่าไม่ผ่าน
-const MIN_FACE_WIDTH = 0.28;    // ใบหน้ากว้างอย่างน้อยกี่ส่วนของภาพ (ไกลกว่านี้ให้ขยับเข้า)
-const MAX_FACE_WIDTH = 0.85;
+// กรอบไกด์วงรี: ตั้งจากระยะที่สแกนผ่านเร็วที่สุดในการทดสอบจริง (หน้ากว้างราวครึ่งหนึ่งของกรอบ)
+// ใช้ค่าเดียวกันทั้งตอนลงทะเบียนและเช็คชื่อ → ภาพใบหน้าที่ได้ใกล้เคียงกัน จับคู่ได้แม่นขึ้น
+const MIN_FACE_WIDTH = 0.36;    // หน้ากว้างน้อยกว่านี้ (อยู่ไกล) → ให้ขยับเข้ามา
+const MAX_FACE_WIDTH = 0.68;    // หน้ากว้างเกินนี้ (ใกล้ไป) → ให้ถอยออก
+const GUIDE_CX = 0.50, GUIDE_CY = 0.51, MAX_OFFSET = 0.12; // ศูนย์กลางกรอบ และระยะเยื้องที่ยอมให้
 const MIN_BRIGHTNESS = 70;      // ความสว่างเฉลี่ยบริเวณใบหน้า (0-255)
 
 const PROCESS_WIDTH = 960; // ความกว้างภาพที่ใช้ประมวลผล (ดูคำอธิบายที่ CAMERA)
@@ -396,73 +401,30 @@ async function startCamera(videoEl, wrapEl, resEl) {
 function stopCamera() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
-  document.querySelectorAll('.video-wrap').forEach((w) => w.classList.remove('on', 'good'));
-  document.querySelectorAll('.video-wrap canvas').forEach((c) => c.getContext('2d').clearRect(0, 0, c.width, c.height));
+  document.querySelectorAll('.video-wrap').forEach((w) => w.classList.remove('on', 'good', 'aligned'));
   document.querySelectorAll('.cam-res').forEach((e) => (e.textContent = ''));
 }
 
-// ---- แท็กใบหน้า (โครงข่ายจุดบนใบหน้า) ----
-// ใช้จุด landmark ของ MediaPipe Face Mesh (468 จุด) เลือกจุดสำคัญมาต่อเป็นโครงข่าย
-const TAG_EDGES = [
-  [10,109],[10,338],[109,67],[338,297],[67,70],[297,300],[10,107],[10,336],[109,105],[338,334],
-  [70,105],[105,107],[107,168],[168,336],[336,334],[334,300],[70,33],[300,263],[105,159],[334,386],[107,133],[336,362],
-  [33,159],[159,133],[133,145],[145,33],[263,386],[386,362],[362,374],[374,263],
-  [133,168],[362,168],[168,6],[6,4],[4,98],[4,327],[98,61],[327,291],[133,6],[362,6],
-  [33,234],[263,454],[234,50],[454,280],[145,50],[374,280],[50,98],[280,327],[50,205],[280,425],[205,61],[425,291],
-  [234,172],[454,397],[61,0],[0,291],[291,17],[17,61],[98,0],[327,0],
-  [172,136],[397,365],[136,148],[365,377],[148,152],[377,152],[61,148],[291,377],[17,152],[205,172],[425,397],
-];
-const TAG_DOTS = [10,70,300,33,263,133,362,168,4,98,327,61,291,0,17,152,234,454,172,397,50,280];
-
-// คืนพิกัดของจุด i แบบ 0..1 (สัมพันธ์กับภาพกล้อง)
-function facePoint(f, i) {
-  if (f.meshRaw?.[i]) return f.meshRaw[i];
-  const p = f.mesh?.[i]; if (!p) return null;
-  const inputW = f.box && f.boxRaw && f.boxRaw[2] ? f.box[2] / f.boxRaw[2] : PROCESS_WIDTH;
-  const inputH = f.box && f.boxRaw && f.boxRaw[3] ? f.box[3] / f.boxRaw[3] : inputW;
-  return [p[0] / inputW, p[1] / inputH];
+// ตำแหน่งใบหน้าเทียบกับกรอบวงกลมที่ผู้ใช้เห็น (ภาพถูกครอปกลางเป็นจัตุรัสด้วย object-fit: cover)
+function faceInView(f, video) {
+  const b = f.boxRaw; const W = video.videoWidth, H = video.videoHeight;
+  if (!b || !W) return { cx: 0.5, cy: 0.5, w: 0.5 };
+  const side = Math.min(W, H), ox = (W - side) / 2, oy = (H - side) / 2;
+  return {
+    cx: ((b[0] + b[2] / 2) * W - ox) / side,
+    cy: ((b[1] + b[3] / 2) * H - oy) / side,
+    w: (b[2] * W) / side,
+  };
 }
 
-// วาดโครงข่ายลงบน ctx: map(x,y) แปลงพิกัด 0..1 เป็นพิกัดบน canvas
-function drawTag(ctx, f, map, scale = 1) {
-  ctx.save();
-  ctx.lineWidth = 1.2 * scale;
-  ctx.strokeStyle = 'rgba(255,255,255,.75)';
-  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 2 * scale;
-  ctx.beginPath();
-  for (const [a, b] of TAG_EDGES) {
-    const pa = facePoint(f, a), pb = facePoint(f, b); if (!pa || !pb) continue;
-    const [x1, y1] = map(pa[0], pa[1]), [x2, y2] = map(pb[0], pb[1]);
-    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-  }
-  ctx.stroke();
-  ctx.shadowColor = 'rgba(64,224,208,.9)'; ctx.shadowBlur = 8 * scale; ctx.fillStyle = '#5EEAD4';
-  for (const i of TAG_DOTS) {
-    const p = facePoint(f, i); if (!p) continue;
-    const [x, y] = map(p[0], p[1]);
-    ctx.beginPath(); ctx.arc(x, y, 3 * scale, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawOverlay(canvas, video, f) {
-  const W = video.videoWidth, H = video.videoHeight; if (!W) return;
-  const s = Math.max(1, Math.round(W / 480));
-  if (canvas.width !== W) { canvas.width = W; canvas.height = H; }
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-  if (f) drawTag(ctx, f, (x, y) => [x * W, y * H], s);
-}
-
-// ภาพนิ่งจัตุรัส (ครอปกลาง, กลับซ้ายขวาแบบกระจก) พร้อมแท็กใบหน้า — แสดงบนเครื่องเท่านั้น ไม่อัปโหลด ไม่บันทึก
-function snapshotWithTag(video, f, size = 360) {
+// ภาพนิ่งจัตุรัส (ครอปกลาง, กลับซ้ายขวาแบบกระจก) — แสดงบนเครื่องเท่านั้น ไม่อัปโหลด ไม่บันทึก
+function snapshot(video, size = 360) {
   const W = video.videoWidth, H = video.videoHeight; if (!W) return null;
   const side = Math.min(W, H), sx = (W - side) / 2, sy = (H - side) / 2;
   const c = document.createElement('canvas'); c.width = c.height = size;
   const ctx = c.getContext('2d');
   ctx.translate(size, 0); ctx.scale(-1, 1);
   ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
-  if (f) drawTag(ctx, f, (x, y) => [((x * W - sx) / side) * size, ((y * H - sy) / side) * size], size / 360);
   return c.toDataURL('image/jpeg', 0.85);
 }
 function snapHtml(src, name, sub) {
@@ -489,10 +451,10 @@ function faceBrightness(video, f) {
 }
 
 // คืนค่า { ok, embedding, realAvg, frames, good, reason, snapshot }
-async function scanFace(videoEl, wrapEl, hintEl, canvasEl, barEl) {
+async function scanFace(videoEl, wrapEl, hintEl, barEl) {
   const start = Date.now();
   const good = [];                 // [{ real, embedding }]
-  let frames = 0, realSum = 0, multi = 0, dark = 0, far = 0, bestFace = null, bestReal = -1, lastLuma = 255;
+  let frames = 0, realSum = 0, multi = 0, dark = 0, far = 0, bestFace = null, bestShot = null, bestReal = -1, lastLuma = 255, misfits = 0, lastMisfit = '';
   const bar = barEl?.querySelector('i'); barEl?.classList.add('on');
   const setBar = (x) => { if (bar) bar.style.width = `${Math.min(100, x * 100)}%`; };
   setBar(0);
@@ -500,22 +462,26 @@ async function scanFace(videoEl, wrapEl, hintEl, canvasEl, barEl) {
   while (Date.now() - start < SCAN_MAX_MS) {
     const res = await human.detect(videoEl);
     const faces = (res.face ?? []).filter((f) => (f.score ?? 0) > 0.5);
-    if (canvasEl) drawOverlay(canvasEl, videoEl, faces.length === 1 ? faces[0] : null);
     if (faces.length > 1) { multi++; hintEl.textContent = 'พบมากกว่า 1 ใบหน้า — ให้มีแค่คุณคนเดียวในกรอบ'; wrapEl.classList.remove('good'); await sleep(60); continue; }
     const f = faces[0];
-    if (!f || !f.embedding || f.embedding.length === 0) { hintEl.textContent = 'ยังไม่เห็นใบหน้า — จัดหน้าให้อยู่กลางวงกลม'; wrapEl.classList.remove('good'); await sleep(60); continue; }
+    if (!f || !f.embedding || f.embedding.length === 0) { hintEl.textContent = 'ยังไม่เห็นใบหน้า — จัดหน้าให้อยู่ในกรอบวงรี'; wrapEl.classList.remove('good'); await sleep(60); continue; }
 
     // คุณภาพภาพ: ขนาดหน้า + แสง (บอกผู้ใช้ทันทีระหว่างสแกน ไม่ต้องรอจนล้มเหลว)
-    const fw = f.boxRaw?.[2] ?? 0.5;
+    // ต้องอยู่ในกรอบไกด์: ขนาดและตำแหน่งตรงกับกรอบวงรี
+    const v = faceInView(f, videoEl);
     if (frames % 3 === 0) lastLuma = faceBrightness(videoEl, f);
-    if (fw < MIN_FACE_WIDTH) { far++; hintEl.textContent = 'ขยับมือถือเข้ามาใกล้หน้าอีกนิด'; wrapEl.classList.remove('good'); await sleep(40); continue; }
-    if (fw > MAX_FACE_WIDTH) { hintEl.textContent = 'ถอยมือถือออกห่างอีกนิด'; wrapEl.classList.remove('good'); await sleep(40); continue; }
+    const misfit = v.w < MIN_FACE_WIDTH ? 'ขยับมือถือเข้ามาใกล้อีกนิด ให้หน้าเต็มกรอบ'
+      : v.w > MAX_FACE_WIDTH ? 'ถอยมือถือออกอีกนิด ให้หน้าอยู่ในกรอบ'
+      : Math.abs(v.cx - GUIDE_CX) > MAX_OFFSET || Math.abs(v.cy - GUIDE_CY) > MAX_OFFSET ? 'เลื่อนหน้าให้อยู่กลางกรอบ'
+      : null;
+    if (misfit) { misfits++; lastMisfit = misfit; if (v.w < MIN_FACE_WIDTH) far++; hintEl.textContent = misfit; wrapEl.classList.remove('good', 'aligned'); await sleep(40); continue; }
+    wrapEl.classList.add('aligned');
 
     frames++;
     const real = f.real ?? 0;
     realSum += real;
     if (real >= REAL_THRESHOLD) good.push({ real, embedding: Array.from(f.embedding) });
-    if (real > bestReal) { bestReal = real; bestFace = f; }
+    if (real > bestReal) { bestReal = real; bestFace = f; bestShot = snapshot(videoEl); }
     wrapEl.classList.add('good');
     if (lastLuma < MIN_BRIGHTNESS) { dark++; hintEl.textContent = 'แสงน้อย — หันหน้าเข้าหาแสง/หน้าต่าง จะผ่านเร็วขึ้น'; }
     else hintEl.textContent = 'มองกล้องนิ่งๆ… กำลังยืนยัน';
@@ -528,13 +494,14 @@ async function scanFace(videoEl, wrapEl, hintEl, canvasEl, barEl) {
 
   barEl?.classList.remove('on');
   const realAvg = frames ? realSum / frames : 0;
-  const snapshot = bestFace ? snapshotWithTag(videoEl, bestFace) : null;
+  const snap = bestShot;
   const stats = { realAvg, frames, good: good.length, ms: Date.now() - start };
   console.info('[scan]', stats);
 
   if (frames < 3) {
     const reason = multi > frames ? 'พบหลายใบหน้าในกรอบ ให้มีแค่คุณคนเดียว'
-      : far > frames ? 'ใบหน้าอยู่ไกลเกินไป ถือมือถือใกล้ขึ้น (ให้หน้าเต็มวงกลม)'
+      : far > frames ? 'ใบหน้าอยู่ไกลเกินไป ถือมือถือใกล้ขึ้นให้หน้าเต็มกรอบวงรี'
+      : misfits > frames ? `ใบหน้ายังไม่อยู่ในกรอบ — ${lastMisfit} แล้วลองใหม่`
       : 'มองไม่เห็นใบหน้าชัดพอ ลองในที่แสงสว่างกว่านี้';
     return { ok: false, reason, ...stats };
   }
@@ -545,7 +512,7 @@ async function scanFace(videoEl, wrapEl, hintEl, canvasEl, barEl) {
   }
   // ใช้เฟรมที่คะแนน real สูงสุด (คุณภาพดีสุด) มาเฉลี่ยเป็นค่าใบหน้า
   const top = good.sort((a, b) => b.real - a.real).slice(0, 8).map((g) => g.embedding);
-  return { ok: true, embedding: averageEmbeddings(top), snapshot, ...stats };
+  return { ok: true, embedding: averageEmbeddings(top), snapshot: snap, ...stats };
 }
 
 // ============================================================
@@ -597,9 +564,9 @@ $('btnCheckin').addEventListener('click', async () => {
     $('sessionBox').innerHTML = sessionCard(session);
 
     // 3) สแกนใบหน้า
-    setStatus('ciStatus', 'เปิดกล้อง… มองกล้องให้หน้าอยู่ในวงกลม');
+    setStatus('ciStatus', 'เปิดกล้อง… จัดหน้าให้อยู่ในกรอบวงรี');
     await startCamera($('ciVideo'), $('ciWrap'), $('ciRes'));
-    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'), $('ciCanvas'), $('ciBar'));
+    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'), $('ciBar'));
     stopCamera(); $('ciHint').textContent = '';
     if (!scan.ok) throw new Error(scan.reason);
 
@@ -674,7 +641,7 @@ $('btnEnrollCam').addEventListener('click', async () => {
   busy = true; $('btnEnrollCam').disabled = true; clearStatus('enStatus');
   try {
     await startCamera($('enVideo'), $('enWrap'), $('enRes'));
-    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'), $('enCanvas'), $('enBar'));
+    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'), $('enBar'));
     stopCamera(); $('enHint').textContent = '';
     if (!scan.ok) throw new Error(scan.reason);
     setStatus('enStatus', 'กำลังบันทึก…');
