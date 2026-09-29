@@ -53,6 +53,12 @@
   .video-wrap.on{ display:block; }
   .video-wrap.good{ border-color:var(--teal); }
   video{ width:100%; height:100%; object-fit:cover; display:block; transform:scaleX(-1); }
+  .video-wrap canvas{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); pointer-events:none; }
+  .cam-res{ text-align:center; font-size:11px; color:var(--ink-muted); font-family:'IBM Plex Mono',monospace; min-height:14px; }
+  .snap{ position:relative; width:180px; height:180px; margin:0 auto 10px; border-radius:18px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.15); }
+  .snap img{ width:100%; height:100%; display:block; }
+  .snap .tag{ position:absolute; left:8px; right:8px; bottom:8px; background:rgba(23,48,41,.85); color:#fff; font-size:12.5px; font-weight:600; padding:5px 8px; border-radius:8px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .snap .tag small{ display:block; font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:10.5px; opacity:.85; }
   .scan-hint{ text-align:center; font-size:13px; color:var(--ink-muted); min-height:20px; }
   .session-card{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; background:#fff; }
   .session-card .code{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-muted); }
@@ -107,7 +113,8 @@
       <div class="gap"></div>
       <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อ</button>
       <div id="sessionBox"></div>
-      <div class="video-wrap" id="ciWrap"><video id="ciVideo" autoplay muted playsinline></video></div>
+      <div class="video-wrap" id="ciWrap"><video id="ciVideo" autoplay muted playsinline></video><canvas id="ciCanvas"></canvas></div>
+      <div class="cam-res" id="ciRes"></div>
       <div class="scan-hint" id="ciHint"></div>
       <div class="status" id="ciStatus"></div>
       <div id="ciResult"></div>
@@ -132,7 +139,8 @@
           <span>ข้าพเจ้ายินยอมให้ระบบเก็บ <b>ค่าคุณลักษณะใบหน้า (face embedding)</b> ซึ่งเป็นข้อมูลชีวภาพตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล มาตรา 26 เพื่อใช้ยืนยันตัวตนในการเช็คชื่อเข้าเรียนเท่านั้น ระบบไม่เก็บภาพใบหน้า และจะลบข้อมูลเมื่อพ้นสภาพนักศึกษา</span>
         </label>
         <button class="btn btn-primary" id="btnEnrollCam" disabled>เปิดกล้องและสแกนใบหน้า</button>
-        <div class="video-wrap" id="enWrap"><video id="enVideo" autoplay muted playsinline></video></div>
+        <div class="video-wrap" id="enWrap"><video id="enVideo" autoplay muted playsinline></video><canvas id="enCanvas"></canvas></div>
+        <div class="cam-res" id="enRes"></div>
         <div class="scan-hint" id="enHint"></div>
       </div>
       <div class="status" id="enStatus"></div>
@@ -208,10 +216,12 @@ const REAL_RATIO = 0.6;         // สัดส่วนเฟรมที่ต
 const SCAN_MS = 2500;           // ระยะเวลาสแกน
 const MIN_FACE_FRAMES = 4;      // ต้องเจอหน้าอย่างน้อยกี่เฟรม
 
+const PROCESS_WIDTH = 960; // ความกว้างภาพที่ใช้ประมวลผล (ดูคำอธิบายที่ CAMERA)
 const HUMAN_CONFIG = {
   modelBasePath: `https://cdn.jsdelivr.net/npm/@vladmandic/human@${HUMAN_VERSION}/models/`,
   backend: 'webgl',
   cacheSensitivity: 0,
+  filter: { enabled: true, width: PROCESS_WIDTH, flip: false },
   face: {
     enabled: true,
     detector: { rotation: false, maxDetected: 2, minConfidence: 0.5 },
@@ -226,7 +236,10 @@ const HUMAN_CONFIG = {
   gesture: { enabled: false }, segmentation: { enabled: false },
 };
 
-const CAMERA = { video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } }, audio: false };
+// ขอความละเอียดสูงสุดที่กล้องหน้ารองรับ (เบราว์เซอร์จะให้ค่าที่ใกล้ที่สุดเอง ไม่ต้องขอสิทธิ์เพิ่ม)
+// การประมวลผลย่อภาพเหลือกว้าง PROCESS_WIDTH — ใบหน้าที่ตัดส่งเข้าโมเดลจดจำใช้ ~224px อยู่แล้ว
+// ภาพต้นทางคมขึ้นช่วยให้ภาพใบหน้าที่ย่อลงคมขึ้น แต่ประมวลผลเต็มความละเอียดจะหน่วงบนมือถือสเปกต่ำโดยไม่ได้ความแม่นยำเพิ่ม
+const CAMERA = { video: { facingMode: 'user', width: { ideal: 4096 }, height: { ideal: 4096 }, frameRate: { ideal: 30 } }, audio: false };
 const ROOM_FROM_QR = new URLSearchParams(location.search).get('room');
 
 // ============================================================
@@ -354,9 +367,15 @@ window.addEventListener('load', async () => {
 // กล้อง + สแกน (liveness + embedding ในรอบเดียว)
 // ============================================================
 let stream = null;
-async function startCamera(videoEl, wrapEl) {
+async function startCamera(videoEl, wrapEl, resEl) {
   stopCamera();
-  stream = await navigator.mediaDevices.getUserMedia(CAMERA);
+  try { stream = await navigator.mediaDevices.getUserMedia(CAMERA); }
+  catch (err) {
+    if (err.name === 'OverconstrainedError') stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    else throw new Error(err.name === 'NotAllowedError' ? 'ยังไม่ได้อนุญาตให้ใช้กล้อง — อนุญาตกล้องให้เบราว์เซอร์แล้วลองใหม่' : 'เปิดกล้องไม่สำเร็จ: ' + err.message);
+  }
+  const st = stream.getVideoTracks()[0]?.getSettings?.() ?? {};
+  if (resEl) resEl.textContent = st.width ? `กล้อง ${st.width}×${st.height}${st.frameRate ? ' · ' + Math.round(st.frameRate) + ' fps' : ''}` : '';
   videoEl.srcObject = stream;
   wrapEl.classList.add('on');
   await new Promise((r) => { if (videoEl.readyState >= 2) r(); else videoEl.onloadeddata = r; });
@@ -366,6 +385,76 @@ function stopCamera() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
   document.querySelectorAll('.video-wrap').forEach((w) => w.classList.remove('on', 'good'));
+  document.querySelectorAll('.video-wrap canvas').forEach((c) => c.getContext('2d').clearRect(0, 0, c.width, c.height));
+  document.querySelectorAll('.cam-res').forEach((e) => (e.textContent = ''));
+}
+
+// ---- แท็กใบหน้า (โครงข่ายจุดบนใบหน้า) ----
+// ใช้จุด landmark ของ MediaPipe Face Mesh (468 จุด) เลือกจุดสำคัญมาต่อเป็นโครงข่าย
+const TAG_EDGES = [
+  [10,109],[10,338],[109,67],[338,297],[67,70],[297,300],[10,107],[10,336],[109,105],[338,334],
+  [70,105],[105,107],[107,168],[168,336],[336,334],[334,300],[70,33],[300,263],[105,159],[334,386],[107,133],[336,362],
+  [33,159],[159,133],[133,145],[145,33],[263,386],[386,362],[362,374],[374,263],
+  [133,168],[362,168],[168,6],[6,4],[4,98],[4,327],[98,61],[327,291],[133,6],[362,6],
+  [33,234],[263,454],[234,50],[454,280],[145,50],[374,280],[50,98],[280,327],[50,205],[280,425],[205,61],[425,291],
+  [234,172],[454,397],[61,0],[0,291],[291,17],[17,61],[98,0],[327,0],
+  [172,136],[397,365],[136,148],[365,377],[148,152],[377,152],[61,148],[291,377],[17,152],[205,172],[425,397],
+];
+const TAG_DOTS = [10,70,300,33,263,133,362,168,4,98,327,61,291,0,17,152,234,454,172,397,50,280];
+
+// คืนพิกัดของจุด i แบบ 0..1 (สัมพันธ์กับภาพกล้อง)
+function facePoint(f, i) {
+  if (f.meshRaw?.[i]) return f.meshRaw[i];
+  const p = f.mesh?.[i]; if (!p) return null;
+  const inputW = f.box && f.boxRaw && f.boxRaw[2] ? f.box[2] / f.boxRaw[2] : PROCESS_WIDTH;
+  const inputH = f.box && f.boxRaw && f.boxRaw[3] ? f.box[3] / f.boxRaw[3] : inputW;
+  return [p[0] / inputW, p[1] / inputH];
+}
+
+// วาดโครงข่ายลงบน ctx: map(x,y) แปลงพิกัด 0..1 เป็นพิกัดบน canvas
+function drawTag(ctx, f, map, scale = 1) {
+  ctx.save();
+  ctx.lineWidth = 1.2 * scale;
+  ctx.strokeStyle = 'rgba(255,255,255,.75)';
+  ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 2 * scale;
+  ctx.beginPath();
+  for (const [a, b] of TAG_EDGES) {
+    const pa = facePoint(f, a), pb = facePoint(f, b); if (!pa || !pb) continue;
+    const [x1, y1] = map(pa[0], pa[1]), [x2, y2] = map(pb[0], pb[1]);
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  }
+  ctx.stroke();
+  ctx.shadowColor = 'rgba(64,224,208,.9)'; ctx.shadowBlur = 8 * scale; ctx.fillStyle = '#5EEAD4';
+  for (const i of TAG_DOTS) {
+    const p = facePoint(f, i); if (!p) continue;
+    const [x, y] = map(p[0], p[1]);
+    ctx.beginPath(); ctx.arc(x, y, 3 * scale, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawOverlay(canvas, video, f) {
+  const W = video.videoWidth, H = video.videoHeight; if (!W) return;
+  const s = Math.max(1, Math.round(W / 480));
+  if (canvas.width !== W) { canvas.width = W; canvas.height = H; }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  if (f) drawTag(ctx, f, (x, y) => [x * W, y * H], s);
+}
+
+// ภาพนิ่งจัตุรัส (ครอปกลาง, กลับซ้ายขวาแบบกระจก) พร้อมแท็กใบหน้า — แสดงบนเครื่องเท่านั้น ไม่อัปโหลด ไม่บันทึก
+function snapshotWithTag(video, f, size = 360) {
+  const W = video.videoWidth, H = video.videoHeight; if (!W) return null;
+  const side = Math.min(W, H), sx = (W - side) / 2, sy = (H - side) / 2;
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.translate(size, 0); ctx.scale(-1, 1);
+  ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
+  if (f) drawTag(ctx, f, (x, y) => [((x * W - sx) / side) * size, ((y * H - sy) / side) * size], size / 360);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+function snapHtml(src, name, sub) {
+  return src ? `<div class="snap"><img src="${src}" alt=""><div class="tag">${esc(name)}<small>${esc(sub)}</small></div></div>` : '';
 }
 
 function normalize(v) { const n = Math.hypot(...v) || 1; return v.map((x) => x / n); }
@@ -376,17 +465,20 @@ function averageEmbeddings(list) {
 }
 
 // คืนค่า { ok, embedding, realAvg, frames, reason }
-async function scanFace(videoEl, wrapEl, hintEl) {
+async function scanFace(videoEl, wrapEl, hintEl, canvasEl) {
   const start = Date.now();
+  let lastFace = null;
   let frames = 0, realOk = 0, realSum = 0, multi = 0;
   const embeddings = [];
   while (Date.now() - start < SCAN_MS) {
     const res = await human.detect(videoEl);
     const faces = (res.face ?? []).filter((f) => (f.score ?? 0) > 0.5);
+    if (canvasEl) drawOverlay(canvasEl, videoEl, faces.length === 1 ? faces[0] : null);
     if (faces.length > 1) { multi++; hintEl.textContent = 'พบมากกว่า 1 ใบหน้า — ให้มีแค่คุณคนเดียวในกรอบ'; wrapEl.classList.remove('good'); continue; }
     const f = faces[0];
     if (!f || !f.embedding || f.embedding.length === 0) { hintEl.textContent = 'ยังไม่เห็นใบหน้า — จัดหน้าให้อยู่กลางวงกลม'; wrapEl.classList.remove('good'); await sleep(60); continue; }
     frames++;
+    lastFace = f;
     const real = f.real ?? 0;
     realSum += real;
     if (real >= REAL_THRESHOLD) { realOk++; embeddings.push(Array.from(f.embedding)); }
@@ -395,11 +487,12 @@ async function scanFace(videoEl, wrapEl, hintEl) {
     await sleep(80);
   }
   const realAvg = frames ? realSum / frames : 0;
+  const snapshot = lastFace ? snapshotWithTag(videoEl, lastFace) : null;
   if (frames < MIN_FACE_FRAMES) return { ok: false, reason: multi > frames ? 'พบหลายใบหน้าในกรอบ ให้มีแค่คุณคนเดียว' : 'มองไม่เห็นใบหน้าชัดพอ ลองในที่แสงสว่างกว่านี้', realAvg, frames };
   if (realOk / frames < REAL_RATIO || embeddings.length === 0) {
     return { ok: false, reason: `ไม่ผ่านการตรวจว่าเป็นคนจริง (คะแนนเฉลี่ย ${realAvg.toFixed(2)}) — ห้ามใช้รูปถ่าย/หน้าจอ ถ้าเป็นหน้าจริงลองเพิ่มแสงแล้วสแกนใหม่`, realAvg, frames };
   }
-  return { ok: true, embedding: averageEmbeddings(embeddings), realAvg, frames };
+  return { ok: true, embedding: averageEmbeddings(embeddings), realAvg, frames, snapshot };
 }
 
 // ============================================================
@@ -452,8 +545,8 @@ $('btnCheckin').addEventListener('click', async () => {
 
     // 3) สแกนใบหน้า
     setStatus('ciStatus', 'เปิดกล้อง… มองกล้องให้หน้าอยู่ในวงกลม');
-    await startCamera($('ciVideo'), $('ciWrap'));
-    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'));
+    await startCamera($('ciVideo'), $('ciWrap'), $('ciRes'));
+    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'), $('ciCanvas'));
     stopCamera(); $('ciHint').textContent = '';
     if (!scan.ok) throw new Error(scan.reason);
 
@@ -467,8 +560,8 @@ $('btnCheckin').addEventListener('click', async () => {
     const t = new Date(d.check_in_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
     $('ciResult').innerHTML = `
       <div class="result ${late ? 'late' : 'ok'}">
-        <div class="big">${late ? '⏰' : '✅'}</div>
-        <div class="name">${esc(d.full_name)}</div>
+        ${scan.snapshot ? snapHtml(scan.snapshot, d.full_name, d.student_code) : `<div class="big">${late ? '⏰' : '✅'}</div>`}
+        <div class="name">${late ? '⏰' : '✅'} ${esc(d.full_name)}</div>
         <div class="line mono">${esc(d.student_code)}</div>
         <div style="margin:10px 0 6px;"><span class="pill ${late ? 'late' : 'present'}">${late ? 'มาสาย' : 'มาปกติ'}</span></div>
         <div class="line">เช็คชื่อเวลา ${t} น. · ${esc(d.room)}</div>
@@ -527,8 +620,8 @@ $('btnEnrollCam').addEventListener('click', async () => {
   if (!enrollStudent || busy) return;
   busy = true; $('btnEnrollCam').disabled = true; clearStatus('enStatus');
   try {
-    await startCamera($('enVideo'), $('enWrap'));
-    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'));
+    await startCamera($('enVideo'), $('enWrap'), $('enRes'));
+    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'), $('enCanvas'));
     stopCamera(); $('enHint').textContent = '';
     if (!scan.ok) throw new Error(scan.reason);
     setStatus('enStatus', 'กำลังบันทึก…');
@@ -543,7 +636,7 @@ $('btnEnrollCam').addEventListener('click', async () => {
     enrollStudent.enrolled = true;
     $('enStep2').style.display = 'none';
     setStatus('enLookup', `<b>${esc(r.data.full_name)}</b> ลงทะเบียนใบหน้าแล้ว`, 'ok');
-    setStatus('enStatus', `ลงทะเบียนสำเร็จ ✓ (real ${scan.realAvg.toFixed(2)}) — ไปที่แท็บ "เช็คชื่อ" ได้เลย`, 'ok');
+    setStatus('enStatus', `${snapHtml(scan.snapshot, r.data.full_name, r.data.student_code)}ลงทะเบียนสำเร็จ ✓ (real ${scan.realAvg.toFixed(2)}) — ไปที่แท็บ "เช็คชื่อ" ได้เลย<br><span style="font-size:11.5px">ภาพนี้แสดงบนเครื่องคุณเท่านั้น ระบบไม่เก็บภาพใบหน้า</span>`, 'ok');
   } catch (err) {
     stopCamera(); $('enHint').textContent = '';
     setStatus('enStatus', err.message, 'error');
