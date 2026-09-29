@@ -439,7 +439,9 @@ $('btnCheckin').addEventListener('click', async () => {
       const n = s.data.nearest_out_of_zone;
       throw new Error(n
         ? `ไม่พบคาบเรียนในบริเวณนี้ — คาบที่ใกล้ที่สุดคือ ${esc(n.course_code)} ที่ ${esc(n.room)} ห่าง ${n.distance_meters} ม. (ต้องไม่เกิน ${n.radius_meters} ม.)`
-        : `ตอนนี้ไม่มีคาบเรียนที่เปิดให้เช็คชื่อ (เวลาเซิร์ฟเวอร์ ${esc(s.data.server_time_bkk)})`);
+        : ROOM_FROM_QR
+          ? `ห้องนี้ไม่มีคาบเรียนที่เปิดให้เช็คชื่อตอนนี้ (เวลา ${esc(s.data.server_time_bkk.slice(11))} น.) — ถ้าคุณอยู่ห้องอื่น ให้สแกน QR ของห้องนั้น`
+          : `ตอนนี้ไม่มีคาบเรียนที่เปิดให้เช็คชื่อ (เวลา ${esc(s.data.server_time_bkk.slice(11))} น.)`);
     } else if (s.data.resolved === 'single') {
       session = s.data.sessions[0];
     } else {
