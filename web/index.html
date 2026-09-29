@@ -56,6 +56,22 @@
   .video-wrap .guide{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
   .video-wrap .guide .oval{ fill:none; stroke:rgba(255,255,255,.9); stroke-width:2.5; stroke-dasharray:3 2.2; vector-effect:non-scaling-stroke; transition:stroke .2s; }
   .video-wrap.aligned .guide .oval{ stroke:#5EEAD4; stroke-dasharray:none; stroke-width:3.5; }
+  .cam-sheet{ position:fixed; inset:0; z-index:50; background:#0b1512; display:flex; flex-direction:column; align-items:center;
+    padding:calc(env(safe-area-inset-top) + 8px) 10px calc(env(safe-area-inset-bottom) + 16px); overflow:hidden; transition:background .3s; }
+  .cam-sheet[hidden]{ display:none; }
+  .cam-sheet .video-wrap{ display:block; width:min(100%, 64vh); max-width:none; margin:0 0 12px; border-radius:30px; border:3px solid rgba(255,255,255,.15); flex-shrink:0; }
+  .cam-sheet .video-wrap.good{ border-color:rgba(94,234,212,.6); }
+  .cam-sheet .scanbar{ background:rgba(255,255,255,.18); max-width:260px; width:70%; }
+  .cam-hint{ color:#fff; font-size:18px; font-weight:600; text-align:center; min-height:28px; margin:10px 8px 4px; line-height:1.4; }
+  .cam-title{ color:rgba(255,255,255,.7); font-size:13px; text-align:center; margin:2px 8px; }
+  .cam-sheet .cam-res{ color:rgba(255,255,255,.4); margin-top:2px; }
+  .cam-cancel{ margin-top:auto; max-width:320px; background:transparent; color:#fff; border:1.3px solid rgba(255,255,255,.3); }
+  /* แสงน้อย: หน้าจอสว่างขาวช่วยส่องหน้า (แบบไฟ selfie) */
+  .cam-sheet.lit{ background:#fff; }
+  .cam-sheet.lit .cam-hint{ color:var(--ink); }
+  .cam-sheet.lit .cam-title, .cam-sheet.lit .cam-res{ color:var(--ink-muted); }
+  .cam-sheet.lit .cam-cancel{ color:var(--ink); border-color:var(--line); }
+  .cam-sheet.lit .scanbar{ background:var(--line); }
   .scanbar{ max-width:220px; height:6px; margin:6px auto 2px; background:var(--line); border-radius:3px; overflow:hidden; display:none; }
   .scanbar.on{ display:block; }
   .scanbar i{ display:block; height:100%; width:0; background:var(--teal); transition:width .15s; }
@@ -118,10 +134,6 @@
       <div class="gap"></div>
       <button class="btn btn-primary btn-big" id="btnCheckin" disabled>เช็คชื่อ</button>
       <div id="sessionBox"></div>
-      <div class="video-wrap" id="ciWrap"><video id="ciVideo" autoplay muted playsinline></video><svg class="guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><mask id="ciMask"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="51" rx="27" ry="35" fill="#000"/></mask></defs><rect width="100" height="100" fill="rgba(0,0,0,.38)" mask="url(#ciMask)"/><ellipse class="oval" cx="50" cy="51" rx="27" ry="35"/></svg></div>
-      <div class="scanbar" id="ciBar"><i></i></div>
-      <div class="cam-res" id="ciRes"></div>
-      <div class="scan-hint" id="ciHint"></div>
       <div class="status" id="ciStatus"></div>
       <div id="ciResult"></div>
       <div class="gps" id="ciGps"></div>
@@ -145,10 +157,6 @@
           <span>ข้าพเจ้ายินยอมให้ระบบเก็บ <b>ค่าคุณลักษณะใบหน้า (face embedding)</b> ซึ่งเป็นข้อมูลชีวภาพตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล มาตรา 26 เพื่อใช้ยืนยันตัวตนในการเช็คชื่อเข้าเรียนเท่านั้น ระบบไม่เก็บภาพใบหน้า และจะลบข้อมูลเมื่อพ้นสภาพนักศึกษา</span>
         </label>
         <button class="btn btn-primary" id="btnEnrollCam" disabled>เปิดกล้องและสแกนใบหน้า</button>
-        <div class="video-wrap" id="enWrap"><video id="enVideo" autoplay muted playsinline></video><svg class="guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><mask id="enMask"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="51" rx="27" ry="35" fill="#000"/></mask></defs><rect width="100" height="100" fill="rgba(0,0,0,.38)" mask="url(#enMask)"/><ellipse class="oval" cx="50" cy="51" rx="27" ry="35"/></svg></div>
-        <div class="scanbar" id="enBar"><i></i></div>
-        <div class="cam-res" id="enRes"></div>
-        <div class="scan-hint" id="enHint"></div>
       </div>
       <div class="status" id="enStatus"></div>
     </div>
@@ -202,6 +210,16 @@
       </details>
     </div>
   </section>
+</div>
+
+<!-- หน้าต่างสแกนใบหน้าแบบเต็มจอ (ใช้ร่วมกันทั้งลงทะเบียนและเช็คชื่อ) — วางภาพกล้องชิดด้านบน ใกล้ตำแหน่งกล้องหน้า -->
+<div class="cam-sheet" id="camSheet" hidden role="dialog" aria-modal="true" aria-label="สแกนใบหน้า">
+  <div class="video-wrap" id="camWrap"><video id="camVideo" autoplay muted playsinline></video><svg class="guide" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><mask id="camMask"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="51" rx="27" ry="35" fill="#000"/></mask></defs><rect width="100" height="100" fill="rgba(0,0,0,.38)" mask="url(#camMask)"/><ellipse class="oval" cx="50" cy="51" rx="27" ry="35"/></svg></div>
+  <div class="scanbar on" id="camBar"><i></i></div>
+  <div class="cam-hint" id="camHint">กำลังเปิดกล้อง…</div>
+  <div class="cam-title" id="camTitle"></div>
+  <div class="cam-res" id="camRes"></div>
+  <button class="btn cam-cancel" id="camCancel">ยกเลิก</button>
 </div>
 
 <script>
@@ -384,6 +402,34 @@ window.addEventListener('load', async () => {
 // กล้อง + สแกน (liveness + embedding ในรอบเดียว)
 // ============================================================
 let stream = null;
+let scanCancelled = false;
+function openCamSheet(title) {
+  scanCancelled = false;
+  $('camTitle').textContent = title || '';
+  $('camHint').textContent = 'กำลังเปิดกล้อง…';
+  $('camSheet').classList.remove('lit');
+  $('camSheet').hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+function closeCamSheet() {
+  $('camSheet').hidden = true;
+  $('camSheet').classList.remove('lit');
+  document.body.style.overflow = '';
+}
+$('camCancel').addEventListener('click', () => { scanCancelled = true; });
+
+// เปิดกล้องในหน้าต่างสแกน → สแกน → ปิดหน้าต่าง (คืนค่าผลสแกน)
+async function runScan(title) {
+  openCamSheet(title);
+  try {
+    await startCamera($('camVideo'), $('camWrap'), $('camRes'));
+    return await scanFace($('camVideo'), $('camWrap'), $('camHint'), $('camBar'));
+  } finally {
+    stopCamera();
+    closeCamSheet();
+  }
+}
+
 async function startCamera(videoEl, wrapEl, resEl) {
   stopCamera();
   try { stream = await navigator.mediaDevices.getUserMedia(CAMERA); }
@@ -460,6 +506,7 @@ async function scanFace(videoEl, wrapEl, hintEl, barEl) {
   setBar(0);
 
   while (Date.now() - start < SCAN_MAX_MS) {
+    if (scanCancelled) return { ok: false, cancelled: true, reason: 'ยกเลิกการสแกนแล้ว', realAvg: 0, frames, good: good.length, ms: Date.now() - start };
     const res = await human.detect(videoEl);
     const faces = (res.face ?? []).filter((f) => (f.score ?? 0) > 0.5);
     if (faces.length > 1) { multi++; hintEl.textContent = 'พบมากกว่า 1 ใบหน้า — ให้มีแค่คุณคนเดียวในกรอบ'; wrapEl.classList.remove('good'); await sleep(60); continue; }
@@ -483,7 +530,7 @@ async function scanFace(videoEl, wrapEl, hintEl, barEl) {
     if (real >= REAL_THRESHOLD) good.push({ real, embedding: Array.from(f.embedding) });
     if (real > bestReal) { bestReal = real; bestFace = f; bestShot = snapshot(videoEl); }
     wrapEl.classList.add('good');
-    if (lastLuma < MIN_BRIGHTNESS) { dark++; hintEl.textContent = 'แสงน้อย — หันหน้าเข้าหาแสง/หน้าต่าง จะผ่านเร็วขึ้น'; }
+    if (lastLuma < MIN_BRIGHTNESS) { dark++; $('camSheet').classList.add('lit'); hintEl.textContent = 'แสงน้อย — เปิดหน้าจอสว่างช่วยส่องหน้าแล้ว มองกล้องนิ่งๆ'; }
     else hintEl.textContent = 'มองกล้องนิ่งๆ… กำลังยืนยัน';
     setBar(good.length / GOOD_FRAMES_NEEDED);
 
@@ -564,10 +611,9 @@ $('btnCheckin').addEventListener('click', async () => {
     $('sessionBox').innerHTML = sessionCard(session);
 
     // 3) สแกนใบหน้า
-    setStatus('ciStatus', 'เปิดกล้อง… จัดหน้าให้อยู่ในกรอบวงรี');
-    await startCamera($('ciVideo'), $('ciWrap'), $('ciRes'));
-    const scan = await scanFace($('ciVideo'), $('ciWrap'), $('ciHint'), $('ciBar'));
-    stopCamera(); $('ciHint').textContent = '';
+    clearStatus('ciStatus');
+    const scan = await runScan(`${session.course_code} · ${session.room}`);
+    if (scan.cancelled) { setStatus('ciStatus', 'ยกเลิกการสแกนแล้ว กดเช็คชื่อเพื่อเริ่มใหม่', 'warn'); return; }
     if (!scan.ok) throw new Error(scan.reason);
 
     // 4) ส่งเช็คชื่อ
@@ -587,9 +633,11 @@ $('btnCheckin').addEventListener('click', async () => {
         <div class="line">เช็คชื่อเวลา ${t} น. · ${esc(d.room)}</div>
         <div class="line mono" style="margin-top:6px;font-size:11.5px;">ใบหน้า ${d.face_match_score} · ห่างห้อง ${d.distance_meters} ม. · real ${scan.realAvg.toFixed(2)} · สแกน ${(scan.ms/1000).toFixed(1)} วิ (${scan.good}/${scan.frames})</div>
       </div>`;
+    $('ciResult').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (err) {
-    stopCamera(); $('ciHint').textContent = '';
+    stopCamera(); closeCamSheet();
     setStatus('ciStatus', err.message, 'error');
+    $('ciStatus').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } finally {
     busy = false; $('btnCheckin').disabled = false;
   }
@@ -640,9 +688,8 @@ $('btnEnrollCam').addEventListener('click', async () => {
   if (!enrollStudent || busy) return;
   busy = true; $('btnEnrollCam').disabled = true; clearStatus('enStatus');
   try {
-    await startCamera($('enVideo'), $('enWrap'), $('enRes'));
-    const scan = await scanFace($('enVideo'), $('enWrap'), $('enHint'), $('enBar'));
-    stopCamera(); $('enHint').textContent = '';
+    const scan = await runScan(`ลงทะเบียน: ${enrollStudent.full_name} (${enrollStudent.student_code})`);
+    if (scan.cancelled) { setStatus('enStatus', 'ยกเลิกการสแกนแล้ว', 'warn'); return; }
     if (!scan.ok) throw new Error(scan.reason);
     setStatus('enStatus', 'กำลังบันทึก…');
     const r = await api('enroll', {
@@ -656,9 +703,10 @@ $('btnEnrollCam').addEventListener('click', async () => {
     enrollStudent.enrolled = true;
     $('enStep2').style.display = 'none';
     setStatus('enLookup', `<b>${esc(r.data.full_name)}</b> ลงทะเบียนใบหน้าแล้ว`, 'ok');
+    setTimeout(() => $('enStatus').scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
     setStatus('enStatus', `${snapHtml(scan.snapshot, r.data.full_name, r.data.student_code)}ลงทะเบียนสำเร็จ ✓ (real ${scan.realAvg.toFixed(2)}) — ไปที่แท็บ "เช็คชื่อ" ได้เลย<br><span style="font-size:11.5px">ภาพนี้แสดงบนเครื่องคุณเท่านั้น ระบบไม่เก็บภาพใบหน้า</span>`, 'ok');
   } catch (err) {
-    stopCamera(); $('enHint').textContent = '';
+    stopCamera(); closeCamSheet();
     setStatus('enStatus', err.message, 'error');
   } finally {
     busy = false; updateEnrollButton();
