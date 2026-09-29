@@ -254,14 +254,54 @@ async function api(fn, body) {
   }
 }
 
-function getGPS() {
+// ---- ตำแหน่ง ----
+// ขั้น 1: ขอแบบแม่นยำสูง (GPS) ฟังต่อเนื่องสูงสุด 10 วิ เก็บค่าที่แม่นที่สุด — ได้ ±30 ม. เมื่อไหร่ใช้ทันที
+// ขั้น 2: ถ้า GPS ไม่ตอบ (มักเกิดในอาคาร) → ใช้ตำแหน่งจาก Wi-Fi/เสาสัญญาณแทน ซึ่งทำงานในอาคารได้ดีกว่า
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const HELP_PERMISSION = IS_IOS
+  ? 'เปิดที่ <b>ตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่ง</b> ให้เปิดอยู่ และ <b>เว็บไซต์ Safari</b> ตั้งเป็น "ขณะใช้แอป" แล้วรีเฟรชหน้านี้'
+  : 'แตะไอคอน 🔒 หน้าช่อง URL → <b>สิทธิ์ → ตำแหน่ง → อนุญาต</b> แล้วรีเฟรชหน้านี้';
+const HELP_UNAVAILABLE = IS_IOS
+  ? 'เช็คว่าเปิด <b>บริการหาตำแหน่ง</b> ใน ตั้งค่า อยู่ และเปิด Wi-Fi ไว้ (ไม่ต้องเชื่อมต่อก็ได้ ช่วยให้หาตำแหน่งในอาคารได้)'
+  : 'ปัดแถบด้านบนของจอลงมา → เปิด <b>ตำแหน่ง (Location)</b> และเปิด Wi-Fi ไว้ (ไม่ต้องเชื่อมต่อก็ได้) ถ้าเป็น Android ให้เปิด <b>ความแม่นยำของตำแหน่งของ Google</b> ใน ตั้งค่า → ตำแหน่ง ด้วย';
+
+function locError(code) {
+  if (code === 1) return new Error(`เบราว์เซอร์ยังไม่ได้รับอนุญาตให้ใช้ตำแหน่ง<br>${HELP_PERMISSION}`);
+  return new Error(`หาตำแหน่งเครื่องไม่ได้<br>${HELP_UNAVAILABLE}`);
+}
+const toPos = (p) => ({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy });
+
+function getGPS(onProgress = () => {}) {
+  if (!navigator.geolocation) return Promise.reject(new Error('เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง'));
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error('เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง'));
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
-      (e) => reject(new Error(e.code === 1 ? 'ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง — เปิดสิทธิ์ Location ให้เบราว์เซอร์ก่อน' : 'หาตำแหน่งไม่สำเร็จ ลองใหม่อีกครั้ง (ออกไปที่โล่งหรือใกล้หน้าต่าง)')),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    let best = null, done = false, watchId = null;
+    const finish = (fn) => { if (done) return; done = true; if (watchId != null) navigator.geolocation.clearWatch(watchId); clearTimeout(timer); fn(); };
+
+    const fallback = () => {
+      onProgress('GPS ไม่ตอบสนอง กำลังใช้ตำแหน่งจาก Wi-Fi/เครือข่ายแทน…');
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve(toPos(p)),
+        (e) => reject(locError(e.code)),
+        { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
+      );
+    };
+
+    onProgress('กำลังหาตำแหน่ง (GPS)…');
+    watchId = navigator.geolocation.watchPosition(
+      (p) => {
+        const pos = toPos(p);
+        if (!best || pos.acc < best.acc) best = pos;
+        onProgress(`กำลังหาตำแหน่ง… แม่นยำ ±${Math.round(best.acc)} ม.`);
+        if (best.acc <= 30) finish(() => resolve(best));
+      },
+      (e) => {
+        if (e.code === 1) return finish(() => reject(locError(1)));
+        // code 2/3 = GPS ไม่มีสัญญาณ/หมดเวลา → ไปวิธีสำรอง
+        finish(() => (best ? resolve(best) : fallback()));
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+    const timer = setTimeout(() => finish(() => (best ? resolve(best) : fallback())), 10000);
   });
 }
 
@@ -372,9 +412,9 @@ $('btnCheckin').addEventListener('click', async () => {
   $('sessionBox').innerHTML = ''; $('ciResult').innerHTML = ''; $('ciGps').textContent = '';
   try {
     // 1) ตำแหน่ง
-    setStatus('ciStatus', 'กำลังตรวจตำแหน่ง…');
-    const pos = await getGPS();
-    $('ciGps').textContent = `GPS ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} · แม่นยำ ±${Math.round(pos.acc)} ม.`;
+    const pos = await getGPS((msg) => setStatus('ciStatus', msg));
+    $('ciGps').textContent = `ตำแหน่ง ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} · แม่นยำ ±${Math.round(pos.acc)} ม.` +
+      (pos.acc > 100 ? ' (ค่อนข้างหยาบ — ถ้าระบบบอกว่าอยู่นอกห้อง ให้เปิด Wi-Fi แล้วลองใหม่)' : '');
 
     // 2) หาคาบที่กำลังเรียน
     setStatus('ciStatus', 'กำลังหาคาบที่กำลังเรียน…');
@@ -505,8 +545,7 @@ const devCall = (action, extra = {}) => api('dev-tools', { dev_code: $('devCode'
 
 $('btnSetRoom').addEventListener('click', async () => {
   try {
-    setStatus('devRoomStatus', 'กำลังหาตำแหน่ง…');
-    const pos = await getGPS();
+    const pos = await getGPS((msg) => setStatus('devRoomStatus', msg));
     const r = await devCall('set_test_room', { latitude: pos.lat, longitude: pos.lng, radius_meters: Number($('devRadius').value) || 50 });
     if (!r.ok) return setStatus('devRoomStatus', errText(r.error), 'error');
     setStatus('devRoomStatus', `ย้ายห้องทดสอบมาที่ ${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)} แล้ว (รัศมี ${r.data.updated[0]?.radius_meters} ม., GPS แม่นยำ ±${Math.round(pos.acc)} ม.)`, 'ok');
