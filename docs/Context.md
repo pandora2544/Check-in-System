@@ -13,7 +13,8 @@
 | Stack ที่ใช้จริง (ยืนยันล่าสุด) | **GitHub** (เก็บโค้ด/CI) + **Supabase** (DB + Auth + Edge Functions) + **Vercel** (frontend hosting) — **ตัด Cloudflare ออกจาก stack ทั้งหมด** (ไม่ใช้ Cloudflare Pages/Tunnel/Workers แล้ว) |
 | ขั้นตอนปัจจุบัน | System Design + UI/UX PWA + API Spec + UI/UX แอดมิน/อาจารย์ + Working Prototype + SQL Schema (รันแล้วบนโปรเจกต์ใหม่ ครบ 15 ตาราง + RLS ครบทุกตาราง) + Edge Function `checkin` (deploy สำเร็จแล้วบนโปรเจกต์ใหม่ `public` schema ปกติ, `verify_jwt: false`) |
 | Deploy จริง | GitHub `pandora2544/Check-in-System` (branch `main`) → Vercel project `cph-smart-checkin` (team `cphsmartcheckin-7827`, root dir `web/`, auto-deploy ทุก push) → https://cph-smart-checkin.vercel.app — Supabase `rpaqvrpuhdadhirzrlrf` |
-| ขั้นตอนถัดไปที่รอทำ | ต่อหน้าเว็บ `web/` เข้ากับ Supabase จริง (ตอนนี้ prototype ยังเก็บข้อมูลในหน่วยความจำ), seed ข้อมูลทดสอบจริง (ต้องสร้าง auth user ก่อน) |
+| ระบบที่ใช้งานได้แล้ว (30 ก.ย. 2569) | หน้าเว็บต่อ Supabase จริง: ลงทะเบียนใบหน้า (Edge Function `enroll` — ตรวจรหัส, ขอ consent PDPA, กันหนึ่งหน้าลงหลายรหัส), เช็คชื่อ (`session` หาคาบจาก GPS/QR ตามลำดับ 3 ชั้น → `checkin` ตรวจช่วงเวลาคาบ+ระยะ+ใบหน้า) + เครื่องมือทดสอบ (`dev-tools`, ใช้รหัส dev) + ข้อมูลจำลอง 13 นักศึกษา 2 กลุ่มเรียน (ดู `docs/test-guide.md`) — เวลาใน schedules = เวลาไทย, แก้ bug timezone ของ checkin เดิมแล้ว |
+| ขั้นตอนถัดไปที่รอทำ | ผู้ใช้ทดสอบบนมือถือจริงตาม `docs/test-guide.md` แล้วเก็บค่าคะแนนใบหน้า/real เพื่อปรับเกณฑ์ → ต่อด้วยหน้าแอดมิน/อาจารย์ และแจ้งเตือน LINE/Web Push |
 
 ---
 

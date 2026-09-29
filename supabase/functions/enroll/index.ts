@@ -1,0 +1,111 @@
+// POST /functions/v1/enroll
+// ลงทะเบียนใบหน้าครั้งแรก (ไม่ต้องล็อกอิน — ช่วงทดสอบใช้รหัสนักศึกษาอย่างเดียว)
+// ⚠️ ก่อนใช้งานจริง: ควรเพิ่มการยืนยันตัวตนตอนลงทะเบียน (เช่น OTP อีเมลมหาวิทยาลัย หรือให้อาจารย์ยืนยันหน้าห้อง)
+//
+// body:
+//   { action: 'lookup', student_code }                              → ชื่อ + ลงทะเบียนแล้วหรือยัง
+//   { action: 'enroll', student_code, embedding, model_version,
+//     consent: true, device_info? }                                 → บันทึก embedding (ไม่เก็บภาพ)
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function getServiceRoleKey(): string {
+  const raw = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (raw) {
+    try { const p = JSON.parse(raw); if (p?.default) return p.default; } catch { /* ใช้ของเดิม */ }
+  }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+}
+const supabase = createClient(Deno.env.get('SUPABASE_URL')!, getServiceRoleKey());
+
+// ใบหน้าที่คล้ายกับคนที่ลงทะเบียนไว้แล้วเกินค่านี้ = น่าจะเป็นคนเดียวกัน → กันคนเดียวลงทะเบียนแทนหลายรหัส
+const DUPLICATE_THRESHOLD = 0.6;
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return -1;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+}
+const fail = (code: string, message: string, status: number, extra: Record<string, unknown> = {}) =>
+  json({ data: null, error: { code, message, ...extra } }, status);
+
+async function findStudent(code: string) {
+  const { data } = await supabase
+    .from('students')
+    .select('student_id, student_code, status, users ( full_name ), face_templates ( template_id )')
+    .eq('student_code', code)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    student_id: data.student_id as string,
+    student_code: data.student_code as string,
+    status: data.status as string,
+    full_name: (data.users as unknown as { full_name: string } | null)?.full_name ?? '',
+    enrolled: ((data.face_templates as unknown[]) ?? []).length > 0,
+  };
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  if (req.method !== 'POST') return fail('METHOD_NOT_ALLOWED', 'ใช้ POST เท่านั้น', 405);
+
+  let body: { action?: string; student_code?: string; embedding?: number[]; model_version?: string; consent?: boolean; device_info?: string };
+  try { body = await req.json(); } catch { return fail('BAD_REQUEST', 'JSON body ไม่ถูกต้อง', 400); }
+
+  const code = String(body.student_code ?? '').trim();
+  if (!/^\d{6,12}$/.test(code)) return fail('BAD_REQUEST', 'รหัสนักศึกษาไม่ถูกต้อง', 400);
+
+  try {
+    const student = await findStudent(code);
+    if (!student) return fail('STUDENT_NOT_FOUND', 'ไม่พบรหัสนักศึกษานี้ในระบบ', 404);
+    if (student.status !== 'active') return fail('STUDENT_INACTIVE', 'สถานะนักศึกษาไม่ใช่ปกติ', 403);
+
+    if (body.action === 'lookup') {
+      return json({ data: { student_code: student.student_code, full_name: student.full_name, enrolled: student.enrolled } });
+    }
+
+    if (body.action !== 'enroll') return fail('BAD_REQUEST', 'action ต้องเป็น lookup หรือ enroll', 400);
+    if (body.consent !== true) return fail('CONSENT_REQUIRED', 'ต้องยินยอมให้ใช้ข้อมูลใบหน้าก่อน (PDPA)', 400);
+    if (student.enrolled) return fail('ALREADY_ENROLLED', 'รหัสนี้ลงทะเบียนใบหน้าไว้แล้ว', 409);
+
+    const emb = body.embedding;
+    if (!Array.isArray(emb) || emb.length < 64 || emb.length > 4096 || !emb.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+      return fail('BAD_REQUEST', 'ข้อมูลใบหน้าไม่ถูกต้อง', 400);
+    }
+
+    // กันคนเดียวลงทะเบียนหลายรหัส
+    const { data: existing } = await supabase.from('face_templates').select('student_id, embedding_vector');
+    let dupSim = -1;
+    for (const t of existing ?? []) {
+      const sim = cosineSimilarity(JSON.parse(t.embedding_vector), emb);
+      if (sim > dupSim) dupSim = sim;
+    }
+    if (dupSim >= DUPLICATE_THRESHOLD) {
+      return fail('DUPLICATE_FACE', 'ใบหน้านี้ลงทะเบียนไว้กับรหัสนักศึกษาอื่นแล้ว', 409, { match_score: Number(dupSim.toFixed(3)) });
+    }
+
+    const { error } = await supabase.from('face_templates').insert({
+      student_id: student.student_id,
+      embedding_vector: JSON.stringify(emb.map((v) => Number(v.toFixed(6)))),
+      model_version: String(body.model_version ?? 'unknown').slice(0, 64),
+      device_info: body.device_info ? String(body.device_info).slice(0, 255) : null,
+    });
+    if (error) throw error;
+
+    return json({ data: { student_code: student.student_code, full_name: student.full_name, enrolled: true } }, 201);
+  } catch (err) {
+    console.error(err);
+    return fail('INTERNAL_ERROR', String(err), 500);
+  }
+});

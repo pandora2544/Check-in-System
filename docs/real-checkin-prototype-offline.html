@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prototype ใช้งานจริง — เช็คชื่อด้วยใบหน้า+GPS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/human/dist/human.js"></script>
+<style>
+  :root{
+    --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
+    --teal:#3C6E58; --teal-dark:#294F40; --teal-bg:#E7F0EA;
+    --amber:#C68A2E; --amber-bg:#FBF1DE;
+    --brick:#B23A2E; --brick-bg:#FBEAE7;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); font-family:'IBM Plex Sans Thai', sans-serif;
+    color:var(--ink); padding:20px 16px 60px;
+  }
+  .wrap{ max-width:480px; margin:0 auto; }
+  h1{ font-size:19px; font-weight:600; margin:0 0 4px; }
+  .disclaimer{ font-size:12.5px; color:var(--ink-muted); line-height:1.6; margin:0 0 20px; padding:10px 14px; background:var(--amber-bg); border-radius:10px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:16px; }
+  .card h2{ font-size:15px; font-weight:600; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
+  .card h2 .step-num{ width:20px; height:20px; border-radius:50%; background:var(--teal); color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; flex-shrink:0; }
+  label{ font-size:12.5px; color:var(--ink-muted); font-weight:600; display:block; margin-bottom:4px; }
+  input{ font-family:inherit; font-size:13.5px; padding:9px 11px; border-radius:9px; border:1px solid var(--line); width:100%; margin-bottom:10px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  video{ width:100%; height:100%; object-fit:cover; display:block; transform:scaleX(-1); background:#0d1a16; }
+  .video-wrap{
+    position:relative; margin:0 auto 6px; max-width:320px;
+    aspect-ratio:1/1; border-radius:20px; overflow:hidden; background:#0d1a16;
+  }
+  .video-wrap .corner{ position:absolute; width:26px; height:26px; border:3px solid var(--teal); z-index:2; }
+  .video-wrap .tl{ top:10px; left:10px; border-right:none; border-bottom:none; border-radius:8px 0 0 0; }
+  .video-wrap .tr{ top:10px; right:10px; border-left:none; border-bottom:none; border-radius:0 8px 0 0; }
+  .video-wrap .bl{ bottom:10px; left:10px; border-right:none; border-top:none; border-radius:0 0 0 8px; }
+  .video-wrap .br{ bottom:10px; right:10px; border-left:none; border-top:none; border-radius:0 0 8px 0; }
+  .cam-res{ text-align:center; font-size:11px; color:var(--ink-muted); font-family:'IBM Plex Mono',monospace; margin-bottom:10px; }
+  canvas.overlay{ position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+  .btn{ font-family:inherit; font-size:14.5px; font-weight:600; padding:12px 16px; border-radius:11px; border:none; cursor:pointer; width:100%; }
+  .btn-primary{ background:var(--teal); color:#fff; }
+  .btn-primary:disabled{ background:var(--line); color:var(--ink-muted); cursor:not-allowed; }
+  .btn-ghost{ background:transparent; border:1.3px solid var(--line); color:var(--ink); margin-top:8px; }
+  .status-line{ display:flex; align-items:center; gap:8px; font-size:13px; padding:9px 12px; border-radius:9px; margin-top:10px; }
+  .status-line.ok{ background:var(--teal-bg); color:var(--teal-dark); }
+  .status-line.warn{ background:var(--amber-bg); color:#7A5A1E; }
+  .status-line.error{ background:var(--brick-bg); color:#7C2A21; }
+  .status-line.loading{ background:var(--line); color:var(--ink-muted); }
+  .mono{ font-family:'IBM Plex Mono',monospace; }
+  details summary{ cursor:pointer; font-size:13px; font-weight:600; color:var(--teal-dark); margin-bottom:10px; }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  th,td{ text-align:right; padding:7px 6px; border-bottom:1px solid var(--line); }
+  th{ color:var(--ink-muted); font-weight:600; }
+  .pill{ padding:3px 9px; border-radius:999px; font-size:11.5px; font-weight:600; }
+  .pill.present{ background:var(--teal-bg); color:var(--teal-dark); }
+  .pill.late{ background:var(--amber-bg); color:#7A5A1E; }
+  .pill.reject{ background:var(--brick-bg); color:#7C2A21; }
+  .empty{ font-size:12.5px; color:var(--ink-muted); text-align:center; padding:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Prototype ใช้งานจริง — เช็คชื่อด้วยใบหน้า + GPS</h1>
+  <div class="disclaimer">
+    ทำงานจริงทั้งกล้อง/GPS/liveness/การจับคู่ใบหน้า — ย้ายมาใช้ <strong>Human library</strong> แทน face-api.js เดิมแล้ว (face-api.js ถูกเลิกดูแลไปแล้วตามที่เจาะลึกไว้) ไม่มี backend จริง ข้อมูลเก็บในหน่วยความจำ รีเฟรชหน้าแล้วหาย ลงทะเบียนได้หลายคนใน session เดียวกัน ตอนเช็คชื่อ**ไม่ต้องเลือกว่าเป็นใคร** ระบบจะหาคนที่ตรงที่สุดให้เอง — <strong>หมายเหตุ</strong>: ค่า threshold การจับคู่/liveness ยังเป็นค่าตั้งต้นที่ยังไม่ได้ปรับจูนกับอุปกรณ์จริง ถ้าเจออาการเช็คชื่อผ่านยากไปหรือง่ายไป บอกได้เลยจะช่วยปรับให้
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">1</span>ตั้งค่าห้องเรียน (สำหรับทดสอบ)</h2>
+    <details>
+      <summary>ตั้งค่าตำแหน่ง/เวลา/เกณฑ์สาย</summary>
+      <label>พิกัดห้อง (latitude, longitude)</label>
+      <div class="row2">
+        <input type="number" id="roomLat" step="any" placeholder="13.7563">
+        <input type="number" id="roomLng" step="any" placeholder="100.5018">
+      </div>
+      <button class="btn btn-ghost" onclick="useCurrentAsRoom()">ใช้ตำแหน่งปัจจุบันเป็นห้องเรียน</button>
+      <label style="margin-top:12px;">รัศมีที่อนุญาต (เมตร)</label>
+      <input type="number" id="radiusInput" value="30">
+      <label>คาบเริ่มเวลา (สำหรับคำนวณสาย)</label>
+      <input type="datetime-local" id="startTimeInput">
+      <label>เกณฑ์ไม่นับสาย (นาทีหลังคาบเริ่ม)</label>
+      <input type="number" id="lateThresholdInput" value="15">
+    </details>
+    <div id="roomStatus" class="status-line ok">ยังไม่ตั้งค่าห้อง — กด "ใช้ตำแหน่งปัจจุบัน" เพื่อเริ่มทดสอบง่ายๆ</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">2</span>ลงทะเบียนใบหน้า (ทำครั้งเดียว)</h2>
+    <label>ชื่อ-นามสกุล (กรอกครั้งแรกครั้งเดียว ไม่ต้องล็อกอินอีก)</label>
+    <input type="text" id="enrollName" placeholder="เช่น กมลชนก ศรีสุข">
+    <label>รหัสนักศึกษา</label>
+    <input type="text" id="enrollCode" placeholder="เช่น 65010123">
+    <div class="video-wrap">
+      <video id="enrollVideo" autoplay muted playsinline></video>
+      <canvas id="enrollOverlay" class="overlay"></canvas>
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    </div>
+    <div class="cam-res" id="enrollCamRes"></div>
+    <button class="btn btn-primary" id="btnStartEnrollCam" onclick="startEnrollCamera()">เปิดกล้อง</button>
+    <button class="btn btn-primary" id="btnCapture" onclick="captureEnrollment()" disabled style="margin-top:8px;">จับภาพลงทะเบียน</button>
+    <div id="enrollStatus" class="status-line loading">รอโหลดโมเดลตรวจจับใบหน้า…</div>
+    <div id="rosterPanel" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">3</span>เช็คชื่อ</h2>
+    <div class="video-wrap" id="checkinVideoWrap" style="display:none;">
+      <video id="checkinVideo" autoplay muted playsinline></video>
+      <canvas id="checkinOverlay" class="overlay"></canvas>
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+    </div>
+    <div class="cam-res" id="checkinCamRes"></div>
+    <button class="btn btn-primary" id="btnCheckin" onclick="runCheckin()" disabled>เช็คชื่อตอนนี้</button>
+    <div id="checkinStatus" class="status-line loading">รอลงทะเบียนใบหน้าให้เสร็จก่อน</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">4</span>ประวัติการเช็คชื่อ (session นี้)</h2>
+    <div id="logTable"><div class="empty">ยังไม่มีการเช็คชื่อ</div></div>
+  </div>
+</div>
+
+<script>
+let modelsReady = false;
+let enrolledPeople = []; // [{name, code, descriptor}]
+let enrollStream = null, checkinStream = null;
+let roomLocation = null; // {lat, lng, radius}
+let checkinLog = [];
+
+let human = null;
+
+// ตั้งค่าให้โหลดเฉพาะโมดูลใบหน้าเท่านั้น (ปิด body/hand/object/gesture) เพื่อลดภาระบนมือถือสเปกต่ำ
+// antispoof เปิดไว้เพื่อใช้เป็นสัญญาณ liveness แทนการเช็ค eye-blink แบบเดิม
+const HUMAN_CONFIG = {
+  modelBasePath: 'https://cdn.jsdelivr.net/npm/@vladmandic/human-models/models/',
+  face: {
+    enabled: true,
+    detector: { rotation: false, maxDetected: 1 },
+    mesh: { enabled: true },
+    iris: { enabled: false },
+    description: { enabled: true },   // สร้าง face embedding สำหรับจับคู่ตัวตน
+    emotion: { enabled: false },
+    antispoof: { enabled: true },     // คะแนนความสมจริง ใช้แทน liveness detection
+  },
+  body: { enabled: false },
+  hand: { enabled: false },
+  object: { enabled: false },
+  gesture: { enabled: false },
+  segmentation: { enabled: false },
+};
+
+// ขอความละเอียดแบบจัตุรัสระดับกลาง (960px) — พอสำหรับความแม่นยำของ face-api.js
+// โดยไม่ขอสูงเกินจำเป็น (ตัวตรวจจับจะย่อภาพลงประมวลผลอยู่แล้ว ขอสูงไปแค่กินแบต/ซีพียูฟรีๆ)
+const CAMERA_CONSTRAINTS = {
+  video: {
+    facingMode: 'user',
+    width: { ideal: 960 },
+    height: { ideal: 960 },
+    aspectRatio: { ideal: 1 }
+  }
+};
+
+function reportCamRes(stream, elId){
+  const track = stream.getVideoTracks()[0];
+  if(!track) return;
+  const s = track.getSettings();
+  const el = document.getElementById(elId);
+  if(el) el.textContent = `กล้องที่ได้จริง: ${s.width}×${s.height}px${s.frameRate ? ' · ' + Math.round(s.frameRate) + ' fps' : ''}`;
+}
+
+// ---- Liveness detection (ใช้คะแนน antispoof ของ Human library โดยตรง แทน eye-blink เดิม) ----
+// สุ่มตรวจหลายเฟรมช่วงสั้นๆ ต้องได้คะแนน "ของจริง" ผ่านเกณฑ์ในสัดส่วนที่มากพอ ไม่ใช่แค่เฟรมเดียว
+// ค่า REAL_THRESHOLD และสัดส่วน 0.6 เป็นค่าเริ่มต้นที่ยังไม่ผ่านการปรับจูนจริง ต้อง benchmark บนอุปกรณ์จริงก่อนใช้งานจริง
+async function checkLiveness(video, statusElId, durationMs=3000, sampleMs=200){
+  const REAL_THRESHOLD = 0.7;
+  const start = Date.now();
+  let okSamples = 0, totalSamples = 0;
+  while(Date.now() - start < durationMs){
+    const remain = Math.ceil((durationMs-(Date.now()-start))/1000);
+    setStatus(statusElId, `ตรวจสอบว่าเป็นคนจริง… (เหลือ ${remain} วิ)`, 'loading');
+    const result = await human.detect(video);
+    if(result.face && result.face[0]){
+      totalSamples++;
+      const realScore = result.face[0].real ?? 0;
+      if(realScore >= REAL_THRESHOLD) okSamples++;
+    }
+    await new Promise(r => setTimeout(r, sampleMs));
+  }
+  return totalSamples > 0 && (okSamples / totalSamples) >= 0.6;
+}
+
+// ---- Matching ใบหน้า (cosine similarity บน embedding ของ Human) ----
+function cosineSimilarity(a, b){
+  let dot = 0, na = 0, nb = 0;
+  for(let i = 0; i < a.length; i++){ dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+function setStatus(elId, text, kind){
+  const el = document.getElementById(elId);
+  el.textContent = text;
+  el.className = 'status-line ' + kind;
+}
+
+// ---- Init default time ----
+(function initTime(){
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('startTimeInput').value = now.toISOString().slice(0,16);
+})();
+
+// ---- Load Human library models ----
+window.addEventListener('load', async () => {
+  try {
+    human = new Human.Human(HUMAN_CONFIG);
+    await human.load();
+    await human.warmup();
+    modelsReady = true;
+    setStatus('enrollStatus', 'โมเดลพร้อมแล้ว — กด "เปิดกล้อง" เพื่อเริ่มลงทะเบียน', 'ok');
+  } catch (err) {
+    console.error(err);
+    setStatus('enrollStatus', 'โหลดโมเดลไม่สำเร็จ (เช็คอินเทอร์เน็ต หรือ CDN อาจถูกบล็อก): ' + err.message, 'error');
+  }
+});
+
+// ---- Haversine distance ----
+function haversineMeters(lat1, lon1, lat2, lon2){
+  const R = 6371000;
+  const toRad = d => d * Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getGPS(){
+  return new Promise((resolve, reject) => {
+    if(!navigator.geolocation) return reject(new Error('เบราว์เซอร์นี้ไม่รองรับ GPS'));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => reject(err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
+
+async function useCurrentAsRoom(){
+  setStatus('roomStatus', 'กำลังขอตำแหน่ง GPS…', 'loading');
+  try {
+    const pos = await getGPS();
+    document.getElementById('roomLat').value = pos.lat.toFixed(6);
+    document.getElementById('roomLng').value = pos.lng.toFixed(6);
+    commitRoom();
+  } catch(err){
+    setStatus('roomStatus', 'ขอตำแหน่งไม่สำเร็จ: ' + err.message, 'error');
+  }
+}
+
+function commitRoom(){
+  const lat = parseFloat(document.getElementById('roomLat').value);
+  const lng = parseFloat(document.getElementById('roomLng').value);
+  const radius = parseFloat(document.getElementById('radiusInput').value) || 30;
+  if(isNaN(lat) || isNaN(lng)){
+    setStatus('roomStatus', 'ยังไม่ได้ตั้งพิกัดห้อง', 'warn');
+    return;
+  }
+  roomLocation = { lat, lng, radius };
+  setStatus('roomStatus', `ตั้งค่าห้องแล้ว: ${lat.toFixed(5)}, ${lng.toFixed(5)} รัศมี ${radius} ม.`, 'ok');
+}
+document.getElementById('roomLat').addEventListener('change', commitRoom);
+document.getElementById('roomLng').addEventListener('change', commitRoom);
+document.getElementById('radiusInput').addEventListener('change', commitRoom);
+
+// ---- Enrollment ----
+async function startEnrollCamera(){
+  if(!modelsReady){ setStatus('enrollStatus','โมเดลยังโหลดไม่เสร็จ รอสักครู่','warn'); return; }
+  try {
+    const video = document.getElementById('enrollVideo');
+    enrollStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+    video.srcObject = enrollStream;
+    reportCamRes(enrollStream, 'enrollCamRes');
+    document.getElementById('btnCapture').disabled = false;
+    setStatus('enrollStatus', 'จัดใบหน้าให้อยู่ในกรอบ แล้วกด "จับภาพลงทะเบียน"', 'ok');
+  } catch(err){
+    setStatus('enrollStatus', 'เปิดกล้องไม่สำเร็จ: ' + err.message, 'error');
+  }
+}
+
+async function captureEnrollment(){
+  const name = document.getElementById('enrollName').value.trim();
+  const code = document.getElementById('enrollCode').value.trim();
+  if(!name || !code){
+    setStatus('enrollStatus', 'กรุณากรอกชื่อ-นามสกุลและรหัสนักศึกษาก่อนลงทะเบียน', 'warn');
+    return;
+  }
+  if(enrolledPeople.some(p => p.code === code)){
+    setStatus('enrollStatus', `รหัส ${code} ลงทะเบียนไปแล้ว ใช้รหัสอื่นถ้าต้องการเพิ่มคนใหม่`, 'warn');
+    return;
+  }
+  setStatus('enrollStatus', 'กำลังตรวจจับใบหน้า…', 'loading');
+  const video = document.getElementById('enrollVideo');
+  const result = await human.detect(video);
+  const face = result.face && result.face[0];
+  if(!face || !face.embedding){
+    setStatus('enrollStatus', 'ไม่พบใบหน้าในภาพ ลองใหม่ในที่มีแสงสว่างเพียงพอ', 'error');
+    return;
+  }
+  enrolledPeople.push({ name, code, descriptor: face.embedding });
+  renderRoster();
+  setStatus('enrollStatus', `ลงทะเบียน "${name}" สำเร็จ ✓ ล้างช่องชื่อ/รหัสแล้ว พร้อมลงทะเบียนคนถัดไปหรือเช็คชื่อได้เลย`, 'ok');
+  document.getElementById('enrollName').value = '';
+  document.getElementById('enrollCode').value = '';
+  if(enrollStream){ enrollStream.getTracks().forEach(t=>t.stop()); }
+  document.getElementById('btnCapture').disabled = true;
+  document.getElementById('btnCheckin').disabled = false;
+  setStatus('checkinStatus', `พร้อมเช็คชื่อ (มีคนลงทะเบียนแล้ว ${enrolledPeople.length} คน) — ไม่ต้องล็อกอิน กดปุ่มด้านล่างได้เลย`, 'ok');
+}
+
+function renderRoster(){
+  const el = document.getElementById('rosterPanel');
+  if(enrolledPeople.length === 0){ el.innerHTML = ''; return; }
+  const items = enrolledPeople.map(p => `<span class="pill present" style="margin:0 6px 6px 0; display:inline-flex;">${p.name} · ${p.code}</span>`).join('');
+  el.innerHTML = `<label>ลงทะเบียนแล้ว (${enrolledPeople.length} คน) — session นี้เท่านั้น</label><div>${items}</div>`;
+}
+
+// ---- Check-in flow ----
+async function runCheckin(){
+  document.getElementById('btnCheckin').disabled = true;
+
+  if(!roomLocation){
+    setStatus('checkinStatus', 'ยังไม่ได้ตั้งค่าห้องเรียนในขั้นตอนที่ 1', 'error');
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+
+  // Step 1: GPS check
+  setStatus('checkinStatus', 'กำลังตรวจสอบตำแหน่ง GPS…', 'loading');
+  let pos;
+  try { pos = await getGPS(); }
+  catch(err){
+    setStatus('checkinStatus', 'ขอตำแหน่งไม่สำเร็จ: ' + err.message, 'error');
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+  const distance = haversineMeters(pos.lat, pos.lng, roomLocation.lat, roomLocation.lng);
+  if(distance > roomLocation.radius){
+    setStatus('checkinStatus', `อยู่นอกพื้นที่ที่กำหนด (ห่าง ${distance.toFixed(1)} ม. ต้องไม่เกิน ${roomLocation.radius} ม.)`, 'error');
+    addLog(null, distance, 'reject_location', null);
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+  setStatus('checkinStatus', `ตำแหน่งผ่าน (ห่าง ${distance.toFixed(1)} ม.) กำลังเปิดกล้อง…`, 'ok');
+
+  // Step 2: face capture + match
+  const wrap = document.getElementById('checkinVideoWrap');
+  wrap.style.display = 'block';
+  const video = document.getElementById('checkinVideo');
+  try {
+    checkinStream = await navigator.mediaDevices.getUserMedia(CAMERA_CONSTRAINTS);
+    video.srcObject = checkinStream;
+    await new Promise(r => video.onloadedmetadata = r);
+    reportCamRes(checkinStream, 'checkinCamRes');
+  } catch(err){
+    setStatus('checkinStatus', 'เปิดกล้องไม่สำเร็จ: ' + err.message, 'error');
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+
+  await new Promise(r => setTimeout(r, 800)); // let camera stabilize
+
+  // Step 2.5: liveness check (ต้องผ่านก่อนถึงจะจับคู่ใบหน้า)
+  const isLive = await checkLiveness(video, 'checkinStatus');
+  if(!isLive){
+    checkinStream.getTracks().forEach(t=>t.stop());
+    wrap.style.display = 'none';
+    document.getElementById('checkinCamRes').textContent = '';
+    setStatus('checkinStatus', 'ไม่ผ่านการตรวจสอบว่าเป็นคนจริง (คะแนนความสมจริงต่ำเกินไป อาจเป็นภาพถ่าย/หน้าจอ) — ลองใหม่อีกครั้ง', 'error');
+    addLog(null, distance, 'reject_liveness', null);
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+
+  setStatus('checkinStatus', 'ผ่านการตรวจสอบว่าเป็นคนจริง — กำลังจับคู่ใบหน้า…', 'loading');
+  const result = await human.detect(video);
+  const face = result.face && result.face[0];
+
+  checkinStream.getTracks().forEach(t=>t.stop());
+  wrap.style.display = 'none';
+  document.getElementById('checkinCamRes').textContent = '';
+
+  if(!face || !face.embedding){
+    setStatus('checkinStatus', 'ไม่พบใบหน้าในภาพ ลองใหม่อีกครั้ง', 'error');
+    addLog(null, distance, 'reject_face_notfound', null);
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+
+  // เทียบกับทุกคนที่ลงทะเบียนไว้ หาคนที่ตรงที่สุด (ไม่ต้องบอกว่าเป็นใครมาก่อน = ไม่ต้องล็อกอิน)
+  let best = null, bestSim = -1;
+  for(const person of enrolledPeople){
+    const sim = cosineSimilarity(person.descriptor, face.embedding);
+    if(sim > bestSim){ bestSim = sim; best = person; }
+  }
+  const MATCH_THRESHOLD = 0.6; // ค่าเริ่มต้น ยังไม่ผ่านการปรับจูนจริงกับโมเดลของ Human — ต้อง benchmark ก่อนใช้งานจริง
+  const matchScore = Math.max(0, bestSim).toFixed(3);
+
+  if(!best || bestSim < MATCH_THRESHOLD){
+    setStatus('checkinStatus', `ไม่พบคนที่ตรงกับใบหน้านี้ในรายชื่อที่ลงทะเบียนไว้ (คะแนนที่ใกล้ที่สุด ${matchScore})`, 'error');
+    addLog(matchScore, distance, 'reject_face_mismatch', null);
+    document.getElementById('btnCheckin').disabled = false;
+    return;
+  }
+
+  // Step 3: timing status
+  const startTime = new Date(document.getElementById('startTimeInput').value);
+  const lateThreshold = parseFloat(document.getElementById('lateThresholdInput').value) || 15;
+  const now = new Date();
+  const minutesSinceStart = (now - startTime) / 60000;
+  let status = 'present';
+  if(minutesSinceStart > lateThreshold) status = 'late';
+
+  setStatus('checkinStatus', `เช็คชื่อสำเร็จ ✓ "${best.name}" — สถานะ: ${status==='present'?'ปกติ':'สาย'} (คะแนนใบหน้า ${matchScore}, ห่างจากห้อง ${distance.toFixed(1)} ม.)`, 'ok');
+  addLog(matchScore, distance, status, best.name);
+  document.getElementById('btnCheckin').disabled = false;
+}
+
+function addLog(matchScore, distance, result, personName){
+  checkinLog.unshift({ time: new Date(), matchScore, distance, result, personName });
+  renderLog();
+}
+
+function renderLog(){
+  const el = document.getElementById('logTable');
+  if(checkinLog.length === 0){ el.innerHTML = '<div class="empty">ยังไม่มีการเช็คชื่อ</div>'; return; }
+  const pillMap = { present:['ปกติ','present'], late:['สาย','late'],
+    reject_location:['นอกพื้นที่','reject'], reject_liveness:['ไม่ผ่าน liveness','reject'], reject_face_notfound:['ไม่พบใบหน้า','reject'], reject_face_mismatch:['ไม่พบคนตรงกัน','reject'] };
+  const rows = checkinLog.map(l => {
+    const [label, cls] = pillMap[l.result];
+    return `<tr>
+      <td class="mono">${l.time.toLocaleTimeString('th-TH')}</td>
+      <td class="name-cell">${l.personName ?? '—'}</td>
+      <td>${l.distance.toFixed(1)} ม.</td>
+      <td>${l.matchScore ?? '—'}</td>
+      <td><span class="pill ${cls}">${label}</span></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th>เวลา</th><th>ชื่อ</th><th>ระยะห่าง</th><th>คะแนนหน้า</th><th>ผล</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+</script>
+</body>
+</html>
