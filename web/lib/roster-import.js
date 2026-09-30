@@ -113,5 +113,58 @@
     return [...set].sort((a, b) => a.localeCompare(b, 'th', { numeric: true }));
   }
 
-  global.RosterImport = { ROLES, detect, build, sectionValues, splitPrefix };
+  // ---------- วางจากหน้าเว็บ (เช่น หน้ารายชื่อของ CES) ----------
+  // อ่านหัวหน้า: "รายวิชา ENH68-111 ชื่อวิชา" / "กลุ่ม 1" / "ภาคการศึกษาที่ 1/2569"
+  function parseMeta(text) {
+    const t = String(text || '').replace(/ /g, ' ');
+    const course = /รายวิชา\s*[:：]?\s*([A-Z]{2,5}\s?\d{2,3}\s?-\s?\d{3}[A-Z]?|[A-Z]{2,5}\d{3,6}[A-Z]?)\s+([^\n\r\t]*)/i.exec(t);
+    const sec = /(?:^|\s|\n)กลุ่ม(?:เรียน)?(?:ที่)?\s*[:：]?\s*(\d{1,3})(?=\s|$)/m.exec(t);
+    const term = /ภาค(?:การศึกษา|เรียน)(?:ที่)?\s*[:：]?\s*(1|2|3|ฤดูร้อน|summer)\s*\/\s*(25\d\d)/i.exec(t);
+    const meta = {};
+    if (course) { meta.course_code = course[1].replace(/\s+/g, '').toUpperCase(); meta.course_name = course[2].trim().replace(/\s+/g, ' ').slice(0, 200) || null; }
+    if (sec) meta.section_no = sec[1];
+    if (term) { meta.term = /ฤดูร้อน|summer|^3$/i.test(term[1]) ? 'summer' : term[1]; meta.academic_year = term[2]; }
+    return meta;
+  }
+
+  // แปลงคลิปบอร์ดเป็นตาราง 2 มิติ: ใช้ HTML ก่อน (แยกช่องแม่นที่สุด) → ข้อความคั่นด้วย tab → ข้อความเว้นวรรค (เดา)
+  function parsePaste(html, text) {
+    let rows = [], mode = 'text', plain = String(text || '');
+    if (html && /<t[dh][\s>]/i.test(html)) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      rows = Array.from(doc.querySelectorAll('tr'))
+        .filter((tr) => !tr.querySelector('table')) // ข้ามแถวของตารางจัดหน้า (ที่มีตารางซ้อนข้างใน)
+        .map((tr) => Array.from(tr.children).filter((c) => /^T[DH]$/.test(c.tagName)).map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
+      plain = plain || doc.body.innerText || doc.body.textContent || '';
+      if (!plain.trim()) plain = doc.body.textContent;
+      mode = 'html';
+    }
+    if (!rows.some((r) => r.some((c) => /\d{6,12}/.test(c.replace(/[\s-]/g, ''))))) {
+      const lines = plain.split(/\r?\n/);
+      if (lines.some((l) => l.includes('\t'))) { rows = lines.map((l) => l.split('\t').map((c) => c.trim())); mode = 'tab'; }
+      else {
+        // ไม่มี tab (เช่น ก๊อปจากมือถือ): "ลำดับ รหัส คำนำหน้าชื่อ นามสกุล ..." → รหัส + 2 คำถัดไปเป็นชื่อ-สกุล
+        rows = [['ลำดับ', 'รหัสนักศึกษา', 'ชื่อ-สกุล']];
+        for (const l of lines) {
+          const m = /^\s*(\d{1,4})?\s*(\d{6,12}|\d{4}-\d{4})\s+(\S+)\s+(\S+)/.exec(l);
+          if (m) rows.push([m[1] || '', m[2], `${m[3]} ${m[4]}`]);
+        }
+        mode = 'words';
+      }
+    }
+    return { rows, meta: parseMeta(plain), mode };
+  }
+
+  // ตรวจความครบ: เลขลำดับต่อเนื่อง 1..N ไม่ขาด ไม่ซ้ำ (กันก๊อปมาไม่ครบ/ก๊อปแค่บางส่วน)
+  function checkSequence(rows, det) {
+    const i = det.headers.findIndex((h) => /^ลำดับ|^no\.?$|^ที่$/i.test(String(h).replace(/\s+/g, '')));
+    if (i < 0) return null;
+    const nums = rows.slice(det.headerRow + 1).map((r) => String(r?.[i] ?? '').trim()).filter((x) => /^\d+$/.test(x)).map(Number);
+    if (!nums.length) return null;
+    const max = Math.max(...nums), set = new Set(nums);
+    const missing = []; for (let k = 1; k <= max; k++) if (!set.has(k)) missing.push(k);
+    return { max, count: nums.length, missing, duplicated: nums.length - set.size, ok: missing.length === 0 && nums.length === set.size && nums[0] === 1 };
+  }
+
+  global.RosterImport = { ROLES, detect, build, sectionValues, splitPrefix, parsePaste, parseMeta, checkSequence };
 })(window);

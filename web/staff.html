@@ -185,6 +185,11 @@
   .kv{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin:8px 0; }
   .kv div{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; text-align:center; } .kv b{ display:block; font-size:19px; font-family:'IBM Plex Mono',monospace; } .kv span{ font-size:11.5px; color:var(--ink-muted); }
   details.lst{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px 10px; margin:6px 0; font-size:13px; } details.lst summary{ cursor:pointer; font-weight:600; }
+  .pastebox{ width:100%; min-height:110px; font-family:inherit; font-size:14px; border:2px dashed var(--teal); border-radius:14px; padding:14px; background:#fff; resize:vertical; }
+  .howto{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13.5px; line-height:1.8; margin-bottom:10px; }
+  .howto kbd{ font-family:'IBM Plex Mono',monospace; background:var(--paper); border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:0 5px; font-size:12px; }
+  .metabox{ border-radius:12px; padding:10px 12px; margin:0 0 10px; font-size:13.5px; border:1px solid var(--line); background:#fff; }
+  .metabox.ok{ border-color:#3C8C65; background:var(--teal-bg); } .metabox.bad{ border-color:var(--brick); background:var(--brick-bg); color:var(--brick-ink); }
   .warnbox{ background:var(--amber-bg); color:var(--amber-ink); border-radius:10px; padding:8px 10px; font-size:13px; margin:6px 0; }
   .okbox{ background:var(--teal-bg); color:var(--teal-dark); border-radius:10px; padding:10px 12px; font-size:14px; margin:6px 0; }
   select.rolesel{ font-size:12px; padding:3px 4px; }
@@ -249,6 +254,7 @@
       <button class="btn btn-ghost btn-sm" id="btnNewTerm" hidden>+ เทอมใหม่</button>
       <button class="btn btn-ghost btn-sm" id="btnNewSection" hidden>+ กลุ่มเรียน</button>
       <span class="spacer"></span>
+      <button class="btn btn-primary btn-sm" id="btnPaste">📋 วางรายชื่อจาก CES</button>
       <button class="btn btn-ghost btn-sm" id="btnTemplate">📄 แม่แบบไฟล์รายชื่อ</button>
     </div>
     <div class="form" id="termForm" hidden>
@@ -1103,14 +1109,17 @@ $('upClose').onclick = closeUpload;
 $('upModal').addEventListener('click', (e) => { if (e.target === $('upModal')) closeUpload(); });
 
 function openUpload(sec) {
-  up = { sec, file: null, sheets: [], sheetIdx: 0, det: null, includePrefix: true, sectionValue: null, removeMissing: false, rows: [], skipped: [], preview: null };
+  up = { sec, fromSection: true, file: null, sheets: [], sheetIdx: 0, det: null, includePrefix: true, sectionValue: null, removeMissing: false, rows: [], skipped: [], preview: null };
   $('upTitle').textContent = `อัปโหลดรายชื่อ ${sec.course_code} กลุ่ม ${sec.section_no}`;
   $('upSub').textContent = `${sec.course_name} · ภาคเรียน ${sec.term} · ตอนนี้มี ${sec.enrolled ?? '?'} คน`;
   $('upModal').hidden = false; document.body.style.overflow = 'hidden';
   upStep(1);
   $('upBody').innerHTML = `<label class="drop" id="upDrop"><input type="file" id="upFile" accept=".xlsx,.csv,.txt" hidden>
       <div style="font-size:30px">📄</div><b>เลือกไฟล์ Excel (.xlsx) หรือ CSV</b><div class="muted">หรือลากไฟล์มาวางที่นี่ · ไฟล์ไม่ถูกอัปโหลดขึ้นเซิร์ฟเวอร์ ระบบอ่านในเครื่องแล้วส่งแค่รหัส/ชื่อ/กลุ่ม</div></label>
+    <div style="text-align:center;margin:10px 0 6px" class="muted">— หรือ —</div>
+    <textarea class="pastebox" id="upPasteBox" placeholder="วางรายชื่อที่ก๊อปจากหน้าเว็บ CES ตรงนี้ (คลิกแล้วกด Ctrl+V / มือถือกดค้างแล้วเลือก วาง)"></textarea>
     <div class="muted" style="margin-top:8px">ต้องมีคอลัมน์ <b>รหัสนักศึกษา</b> และ <b>ชื่อ</b> (ชื่อ-นามสกุลช่องเดียว หรือแยกชื่อ/นามสกุล/คำนำหน้าก็ได้) · ถ้ามีคอลัมน์ <b>กลุ่ม</b> จะใช้เป็นกลุ่มทำงานในแล็บ · ไม่แน่ใจกด "📄 แม่แบบไฟล์รายชื่อ"</div>`;
+  bindPasteBox($('upPasteBox'));
   const drop = $('upDrop');
   $('upFile').onchange = () => $('upFile').files[0] && loadFile($('upFile').files[0]);
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
@@ -1118,12 +1127,110 @@ function openUpload(sec) {
   drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
 }
 
+// ---- วางจากหน้าเว็บ CES ----
+const HOWTO = `<div class="howto"><b>วิธีก๊อปจาก CES</b> (ครั้งละ 1 กลุ่มเรียน)<br>
+  1. เปิดหน้า <b>รายชื่อนักศึกษา</b> ของวิชาใน CES (หน้าที่มี "รายวิชา … กลุ่ม … ภาคการศึกษาที่ …")<br>
+  2. กด <kbd>Ctrl</kbd>+<kbd>A</kbd> (เลือกทั้งหน้า) แล้ว <kbd>Ctrl</kbd>+<kbd>C</kbd> · มือถือ: กดค้าง → เลือกทั้งหมด → คัดลอก<br>
+  3. คลิกกล่องด้านล่างแล้ว <kbd>Ctrl</kbd>+<kbd>V</kbd> — ระบบอ่านรหัสวิชา/กลุ่ม/ภาคเรียนเอง และเลือกกลุ่มเรียนให้</div>`;
+
+function bindPasteBox(el) {
+  el.addEventListener('paste', (e) => {
+    const html = e.clipboardData?.getData('text/html') || '', text = e.clipboardData?.getData('text/plain') || '';
+    if (!html && !text) return;
+    e.preventDefault();
+    handlePaste(html, text);
+  });
+  // มือถือบางรุ่นไม่ส่ง clipboardData → อ่านจากข้อความที่วางลงกล่อง
+  el.addEventListener('input', () => { if (el.value.length > 40) { const v = el.value; el.value = ''; handlePaste('', v); } });
+}
+
+function openPaste() {
+  up = { sec: null, file: null, sheets: [], sheetIdx: 0, det: null, includePrefix: true, sectionValue: null, removeMissing: false, rows: [], skipped: [], preview: null };
+  $('upTitle').textContent = 'วางรายชื่อจาก CES';
+  $('upSub').textContent = 'ระบบเลือกกลุ่มเรียนให้จากหัวหน้ารายชื่อ';
+  $('upModal').hidden = false; document.body.style.overflow = 'hidden';
+  upStep(1);
+  $('upBody').innerHTML = HOWTO + '<textarea class="pastebox" id="upPasteBox" placeholder="คลิกที่นี่แล้วกด Ctrl+V"></textarea>';
+  bindPasteBox($('upPasteBox'));
+  setTimeout(() => $('upPasteBox')?.focus(), 50);
+}
+$('btnPaste').onclick = openPaste;
+
+const sameCode = (a, b) => String(a || '').replace(/[\s-]/g, '').toUpperCase() === String(b || '').replace(/[\s-]/g, '').toUpperCase();
+const sameNo = (a, b) => String(a || '').replace(/^0+/, '') === String(b || '').replace(/^0+/, '');
+
+async function handlePaste(html, text) {
+  $('upErr').textContent = '';
+  const p = RosterImport.parsePaste(html, text);
+  if (!p.rows.some((r) => r.some((c) => /\d{6,12}/.test(String(c).replace(/[\s-]/g, ''))))) {
+    $('upErr').textContent = 'ไม่พบรายชื่อในสิ่งที่วาง — ก๊อปจากหน้า "รายชื่อนักศึกษา" ของ CES ให้ติดตาราง (Ctrl+A แล้ว Ctrl+C)';
+    return;
+  }
+  up.file = { name: p.meta.course_code ? `${p.meta.course_code} กลุ่ม ${p.meta.section_no ?? '?'} (วางจาก CES)` : 'ข้อมูลที่วาง' };
+  up.sheets = [{ name: 'วาง', rows: p.rows }]; up.sheetIdx = 0; up.meta = p.meta; up.pasteMode = p.mode;
+  // หน้าต่างรวม (ยังไม่ได้เลือกกลุ่มเรียน) → หากลุ่มเรียนจาก รหัสวิชา+กลุ่ม+ภาคเรียน
+  if (!up.sec) {
+    const found = await findSection(p.meta);
+    if (found.error) { $('upErr').innerHTML = found.error; if (found.action) found.action(); return; }
+    up.sec = found.sec;
+    $('upTitle').textContent = `วางรายชื่อ ${up.sec.course_code} กลุ่ม ${up.sec.section_no}`;
+    $('upSub').textContent = `${up.sec.course_name} · ภาคเรียน ${up.sec.term} · ตอนนี้มี ${up.sec.enrolled ?? '?'} คน`;
+  }
+  detectSheet(); renderMapping();
+}
+
+async function findSection(meta) {
+  if (!meta.course_code || !meta.section_no || !meta.academic_year) {
+    return { error: 'อ่านรหัสวิชา/กลุ่ม/ภาคเรียนจากสิ่งที่วางไม่ได้ — ก๊อปทั้งหน้า (Ctrl+A) ให้ติดหัว "รายวิชา … กลุ่ม … ภาคการศึกษาที่ …" หรือกด "อัปโหลด" ที่กลุ่มเรียนนั้นโดยตรงแล้ววางในหน้าต่างนั้น' };
+  }
+  if (!boot) boot = await manageApi('bootstrap');
+  const term = boot.terms.find((t) => t.academic_year === meta.academic_year && t.term === meta.term);
+  const label = `${meta.term === 'summer' ? 'ภาคฤดูร้อน' : `ภาคเรียนที่ ${meta.term}`}/${meta.academic_year}`;
+  if (!term) return { error: `ยังไม่มี${label} ในระบบ${boot.user.role === 'admin' ? ' — สร้างเทอมก่อน (ปุ่ม "+ เทอมใหม่") แล้ววางใหม่' : ' — ติดต่อแอดมินให้สร้างเทอม'}` };
+  const secs = term.semester_id === termId && termSections.length ? termSections : (await manageApi('term_sections', { semester_id: term.semester_id })).sections;
+  const sec = secs.find((x) => sameCode(x.course_code, meta.course_code) && sameNo(x.section_no, meta.section_no));
+  if (sec) {
+    if (!sec.editable) return { error: `${sec.course_code} กลุ่ม ${sec.section_no} ไม่ใช่กลุ่มที่คุณสอน — อัปโหลดได้เฉพาะอาจารย์ผู้สอนหรือแอดมิน` };
+    return { sec };
+  }
+  if (boot.user.role !== 'admin') return { error: `ยังไม่มี ${meta.course_code} กลุ่ม ${meta.section_no} (${label}) ในระบบ — ติดต่อแอดมินให้สร้างกลุ่มเรียน` };
+  // แอดมิน: สร้างกลุ่มเรียนจากข้อมูลที่วางได้เลย
+  return { error: `ยังไม่มี <b>${esc(meta.course_code)} กลุ่ม ${esc(meta.section_no)}</b> (${label}) ในระบบ`, action: () => showCreateFromPaste(meta, term) };
+}
+
+function showCreateFromPaste(meta, term) {
+  const course = boot.courses.find((c) => sameCode(c.course_code, meta.course_code));
+  $('upBody').innerHTML = HOWTO + `<div class="form" style="border-style:solid">
+    <div style="width:100%"><b>สร้างกลุ่มเรียนใหม่จากข้อมูลที่วาง</b></div>
+    <div class="f"><label>รหัสวิชา</label><input value="${esc(meta.course_code)}" disabled size="10"></div>
+    ${course ? `<div class="f"><label>ชื่อวิชา</label><input value="${esc(course.course_name)}" disabled size="26"></div>` : `<div class="f"><label>ชื่อวิชา</label><input id="cpName" value="${esc(meta.course_name || '')}" size="26"></div>
+    <div class="f"><label>สาขา</label><select id="cpDept"><option value="">— ไม่ระบุ —</option>${boot.departments.map((d) => `<option value="${esc(d.department_id)}">${esc(d.name)}</option>`).join('')}</select></div>`}
+    <div class="f"><label>กลุ่ม</label><input value="${esc(meta.section_no)}" disabled size="3"></div>
+    <div class="f"><label>อาจารย์ผู้สอน</label><select id="cpInstr"><option value="">— ยังไม่ระบุ —</option>${boot.instructors.map((u) => `<option value="${esc(u.user_id)}">${esc(u.full_name)}</option>`).join('')}</select></div>
+    <button class="btn btn-primary btn-sm" id="cpGo">สร้างแล้วนำเข้ารายชื่อต่อ</button></div>`;
+  $('cpGo').onclick = async () => {
+    try {
+      $('cpGo').disabled = true;
+      const courseId = course ? course.course_id : (await manageApi('course_save', { course_code: meta.course_code, course_name: $('cpName').value, department_id: $('cpDept').value || null })).course_id;
+      await manageApi('section_save', { course_id: courseId, semester_id: term.semester_id, section_no: meta.section_no, instructor_id: $('cpInstr').value || null });
+      boot = await manageApi('bootstrap');
+      const sec = (await manageApi('term_sections', { semester_id: term.semester_id })).sections.find((x) => sameCode(x.course_code, meta.course_code) && sameNo(x.section_no, meta.section_no));
+      if (!sec) throw new Error('สร้างแล้วแต่หาไม่เจอ — รีเฟรชหน้า');
+      up.sec = sec; $('upErr').textContent = '';
+      $('upTitle').textContent = `วางรายชื่อ ${sec.course_code} กลุ่ม ${sec.section_no}`;
+      $('upSub').textContent = `${sec.course_name} · ภาคเรียน ${sec.term} · กลุ่มเรียนใหม่`;
+      detectSheet(); renderMapping();
+      if (termId === term.semester_id) loadTermSections();
+    } catch (err) { $('upErr').textContent = err.message; $('cpGo').disabled = false; }
+  };
+}
+
 async function loadFile(file) {
   try {
     const { sheets } = await XlsxRead.read(file);
     const usable = sheets.filter((s) => s.rows.some((r) => r?.length));
     if (!usable.length) throw new Error('ไฟล์ว่าง');
-    up.file = file; up.sheets = usable;
+    up.file = file; up.sheets = usable; up.meta = null;
     // เลือกชีตแรกที่เจอคอลัมน์รหัส
     up.sheetIdx = Math.max(0, usable.findIndex((s) => RosterImport.detect(s.rows).roles.includes('code')));
     detectSheet(); renderMapping();
@@ -1147,7 +1254,29 @@ function renderMapping() {
   const cols = Array.from({ length: det.width }, (_, c) => c).filter((c) => det.roles[c] !== 'ignore' || (det.headers[c] || sample.some((r) => String(r[c] ?? '').trim())));
   const roleSel = (c) => `<select class="rolesel" data-col="${c}">${Object.entries(RosterImport.ROLES).map(([k, v]) => `<option value="${k}" ${det.roles[c] === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
   const colName = (c) => XlsxLite.colName(c);
-  $('upBody').innerHTML = `
+  // ---- ตัวกันพลาด (ข้อมูลที่วาง) ----
+  const seq = RosterImport.checkSequence(sh.rows, det);
+  up.seq = seq;
+  let metaHtml = '', blocked = false;
+  if (up.meta && (up.meta.course_code || up.meta.section_no)) {
+    const m = up.meta, s2 = up.sec;
+    const termOk = !m.academic_year || s2.term === `${m.term}/${m.academic_year}`;
+    const match = sameCode(m.course_code, s2.course_code) && sameNo(m.section_no, s2.section_no) && termOk;
+    up.metaMismatch = !match;
+    metaHtml = match
+      ? `<div class="metabox ok">✅ ข้อมูลที่วางเป็นของ <b>${esc(m.course_code)} กลุ่ม ${esc(m.section_no)}</b>${m.academic_year ? ` ภาคเรียน ${esc(m.term)}/${esc(m.academic_year)}` : ''} — ตรงกับกลุ่มเรียนนี้</div>`
+      : `<div class="metabox bad">⚠️ ข้อมูลที่วางเป็นของ <b>${esc(m.course_code || '?')} กลุ่ม ${esc(m.section_no || '?')}</b>${m.academic_year ? ` ภาคเรียน ${esc(m.term)}/${esc(m.academic_year)}` : ''} แต่กำลังจะนำเข้า <b>${esc(s2.course_code)} กลุ่ม ${esc(s2.section_no)}</b> (${esc(s2.term)})
+          <label class="ck" style="margin:6px 0 0;color:inherit;display:flex"><input type="checkbox" id="upForce" ${up.forceMismatch ? 'checked' : ''}> ฉันตรวจแล้ว ต้องการนำเข้ากลุ่มนี้จริง</label></div>`;
+    blocked = !match && !up.forceMismatch;
+  }
+  if (seq) {
+    metaHtml += seq.ok
+      ? `<div class="metabox ok">✅ ลำดับ 1–${seq.max} ครบ ${seq.count} คน ไม่ขาด ไม่ซ้ำ${up.rows.length !== seq.count ? ` (อ่านได้ ${up.rows.length} คน — ตรวจแถวที่ข้าม)` : ''}</div>`
+      : `<div class="metabox bad">⚠️ ลำดับไม่ครบ${seq.missing.length ? ` — ขาดลำดับ ${seq.missing.slice(0, 15).join(', ')}${seq.missing.length > 15 ? '…' : ''}` : ''}${seq.duplicated ? ` · ซ้ำ ${seq.duplicated} แถว` : ''} · อาจก๊อปมาไม่ครบ (ก๊อปทั้งหน้าอีกครั้ง) · ระบบจะไม่เอาใครออกจากกลุ่มอัตโนมัติ</div>`;
+  }
+  if (up.pasteMode === 'words') metaHtml += '<div class="warnbox">วางมาเป็นข้อความธรรมดา (ไม่มีตาราง) — ระบบเดาชื่อ-สกุลจาก 2 คำหลังรหัส ตรวจชื่อในตัวอย่างก่อนนำเข้า</div>';
+
+  $('upBody').innerHTML = metaHtml + `
     <div class="row" style="margin-bottom:8px">
       <span>📄 <b>${esc(up.file.name)}</b></span>
       ${up.sheets.length > 1 ? `<label style="margin:0">ชีต</label><select id="upSheet" class="rolesel" style="font-size:13px">${up.sheets.map((s, i) => `<option value="${i}" ${i === up.sheetIdx ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : ''}
@@ -1166,8 +1295,9 @@ function renderMapping() {
     <div class="kv"><div><b>${up.rows.length}</b><span>คนที่จะนำเข้า</span></div><div><b>${up.skipped.length}</b><span>แถวที่ข้าม (ไม่มีรหัส)</span></div></div>
     ${up.rows.length ? `<details class="lst"><summary>ตัวอย่างที่ระบบอ่านได้ (${Math.min(5, up.rows.length)} แถวแรก)</summary>${up.rows.slice(0, 5).map((r) => `<div><span class="mono">${esc(r.code)}</span> ${esc(r.full_name)}${r.group ? ` · กลุ่ม ${esc(r.group)}` : ''}</div>`).join('')}</details>` : ''}
     ${up.skipped.length ? `<details class="lst"><summary>แถวที่ข้าม</summary>${up.skipped.slice(0, 20).map((x) => `<div>แถว ${x.line}: ${esc(x.text || '(ว่าง)')}</div>`).join('')}</details>` : ''}
-    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn btn-primary" id="upCheck" ${has('code') && okName && up.rows.length ? '' : 'disabled'}>ตรวจกับข้อมูลในระบบ →</button></div>`;
-  $('upOther').onclick = () => openUpload(up.sec);
+    <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn btn-primary" id="upCheck" ${has('code') && okName && up.rows.length && !blocked ? '' : 'disabled'}>ตรวจกับข้อมูลในระบบ →</button></div>`;
+  if ($('upForce')) $('upForce').onchange = () => { up.forceMismatch = $('upForce').checked; renderMapping(); };
+  $('upOther').onclick = () => (up.meta && !up.fromSection ? openPaste() : openUpload(up.sec));
   if ($('upSheet')) $('upSheet').onchange = () => { up.sheetIdx = Number($('upSheet').value); detectSheet(); renderMapping(); };
   $('upPrefix').onchange = () => { up.includePrefix = $('upPrefix').checked; renderMapping(); };
   if ($('upSecVal')) $('upSecVal').onchange = () => { up.sectionValue = $('upSecVal').value; renderMapping(); };
@@ -1178,7 +1308,11 @@ function renderMapping() {
     up.sections = RosterImport.sectionValues(up.sheets[up.sheetIdx].rows, up.det);
     renderMapping();
   });
-  $('upCheck').onclick = () => runPreview();
+  $('upCheck').onclick = () => {
+    // วางครบทั้งกลุ่ม (ลำดับต่อเนื่อง + หัวตรงกลุ่มเรียน) = รายชื่อทั้งหมดของกลุ่ม → คนที่ไม่มีในรายชื่อน่าจะถอน → ติ๊กเอาออกไว้ให้ (แก้ได้ในขั้นถัดไป)
+    if (up.meta && up.seq?.ok && !up.metaMismatch && up.removeMissing === false && !up.removeTouched) up.removeMissing = true;
+    runPreview();
+  };
 }
 
 const payloadRows = () => up.rows.map(({ code, full_name, group }) => ({ code, full_name, group }));
@@ -1213,7 +1347,7 @@ function renderPreview() {
     <div class="row" style="margin-top:12px"><button class="btn btn-ghost" id="upBack">← แก้คอลัมน์</button><span class="spacer"></span>
       <button class="btn btn-primary" id="upGo" ${p.invalid.length || !p.total ? 'disabled' : ''}>นำเข้า ${p.total} คน</button></div>`;
   $('upBack').onclick = () => renderMapping();
-  if ($('upRemove')) $('upRemove').onchange = () => { up.removeMissing = $('upRemove').checked; runPreview(); };
+  if ($('upRemove')) $('upRemove').onchange = () => { up.removeMissing = $('upRemove').checked; up.removeTouched = true; runPreview(); };
   $('upGo').onclick = async () => {
     $('upGo').disabled = true; $('upGo').textContent = 'กำลังนำเข้า…';
     try {
