@@ -33,7 +33,7 @@ export async function tgSend(chatId: string, html: string) {
 
 async function loadSchedule(sb: SB, scheduleId: string) {
   const { data: sc } = await sb.from('schedules')
-    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( section_no, late_threshold_minutes, auto_absent, courses ( course_code, course_name ) )')
+    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( section_no, late_threshold_minutes, auto_absent, courses ( course_code, course_name ) ), lab_topics ( seq, title_th )')
     .eq('schedule_id', scheduleId).maybeSingle();
   return sc;
 }
@@ -90,6 +90,7 @@ export async function buildSummary(sb: SB, scheduleId: string, kind: SummaryKind
   const L: string[] = [
     `📋 <b>${esc(sec.courses?.course_code)} กลุ่ม ${esc(sec.section_no)}</b> · ${esc(sec.courses?.course_name)}`,
     `📅 ${esc(thDate(start))} · ${hhmm(start)}–${hhmm(end)} · 📍 ${esc(sc.locations?.name ?? '-')}`,
+    ...(sc.lab_topics ? [`🧪 ปฏิบัติการที่ ${esc(sc.lab_topics.seq)} ${esc(sc.lab_topics.title_th)}`] : []),
     '',
     head,
     `✅ มา ${c.present} · ⏰ สาย ${c.late} · 📝 ลา ${c.excused} · ❌ ขาด ${c.absent}` + (none.length ? ` · ⬜ ยังไม่เช็ค ${none.length}` : ''),

@@ -64,7 +64,7 @@ async function sectionAccess(me: Staff, sectionId: string) {
 
 async function scheduleAccess(me: Staff, scheduleId: string) {
   const { data: sc } = await supabase.from('schedules')
-    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( late_threshold_minutes )')
+    .select('schedule_id, section_id, class_date, start_time, end_time, status, note, locations ( name ), lab_sections ( late_threshold_minutes ), lab_topics ( seq, title_th, title_en )')
     .eq('schedule_id', scheduleId).maybeSingle();
   if (!sc) return null;
   const sec = await sectionAccess(me, sc.section_id);
@@ -157,6 +157,7 @@ Deno.serve(async (req: Request) => {
             instructor_name: sec.instructor_name, department_code: sec.department_code, department_name: sec.department_name, color: sec.color,
             mine: sec.mine, editable: sec.editable,
             total: r.enrolled, present: r.present, late: r.late, absent: r.absent, excused: r.excused, checked_out: r.checked_out,
+            topic_seq: r.topic_seq ?? null, topic_title: r.topic_title ?? null,
           };
         });
         return json({ data: { date, sessions } });
@@ -192,6 +193,7 @@ Deno.serve(async (req: Request) => {
             status: sc.status, room: sc.locations?.name, course_code: sec.course_code, course_name: sec.course_name,
             section_no: sec.section_no, late_threshold_minutes: sc.lab_sections?.late_threshold_minutes, section_id: sc.section_id,
             instructor_name: sec.instructor_name, department_name: sec.department_name, term: sec.term, editable: sec.editable,
+            topic_seq: sc.lab_topics?.seq ?? null, topic_title: sc.lab_topics?.title_th ?? null, topic_title_en: sc.lab_topics?.title_en ?? null, plan_note: sc.note ?? null,
           },
           roster,
         } });

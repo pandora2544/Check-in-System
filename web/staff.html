@@ -59,6 +59,7 @@
   .sess .top{ display:flex; gap:8px; align-items:baseline; }
   .sess .time{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px; }
   .sess .title{ font-weight:600; font-size:14.5px; }
+  .topic{ font-size:12px; color:var(--teal-dark); font-weight:600; }
   .sess .meta{ font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
   .bar{ display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--line); margin-top:8px; }
   .bar i{ display:block; height:100%; }
@@ -176,6 +177,24 @@
   table.rt{ width:100%; border-collapse:collapse; font-size:13px; } table.rt th, table.rt td{ border-bottom:1px solid var(--line); padding:6px 6px; text-align:left; vertical-align:top; }
   table.rt th{ font-size:12px; color:var(--ink-muted); font-weight:700; background:#fff; position:sticky; top:0; }
   .tablewrap{ max-height:360px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+  .steps4{ display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px; font-size:12px; }
+  .steps4 span{ background:#fff; border:1px solid var(--line); border-radius:999px; padding:4px 10px; color:var(--ink); }
+  .steps4 span b{ display:inline-block; min-width:16px; color:var(--teal-dark); } .steps4 .later{ color:var(--ink-muted); border-style:dashed; }
+  .sth{ font-size:14.5px; margin:16px 0 6px; padding-top:10px; border-top:1px solid var(--line); }
+  .sth:first-of-type{ border-top:none; padding-top:0; margin-top:4px; }
+  .slot{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:6px; }
+  .slot select, .slot input, .selsm, #planTable select, #planTable input, #topicRows input, #holList input{ font-family:inherit; font-size:14px; padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); width:auto; }
+  .trow{ display:grid; grid-template-columns:52px 1fr 1fr auto; gap:6px; margin-bottom:6px; align-items:center; }
+  .trow input{ width:100% !important; }
+  @media (max-width:600px){ .trow{ grid-template-columns:48px 1fr auto; } .trow .en{ display:none; } }
+  .plan{ border:1px solid var(--line); border-radius:12px; background:#fff; padding:10px 12px; margin:8px 0; font-size:13px; }
+  .plan .k{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px; }
+  .plan .k span{ padding:2px 9px; border-radius:999px; font-weight:600; font-size:12px; }
+  .k-add{ background:var(--teal-bg); color:var(--teal-dark); } .k-upd{ background:var(--blue-bg); color:var(--blue); } .k-del{ background:var(--brick-bg); color:var(--brick-ink); } .k-warn{ background:var(--amber-bg); color:var(--amber-ink); } .k-keep{ background:#eee; color:#555; }
+  .plan ul{ margin:4px 0; padding-left:18px; } .plan li{ margin:1px 0; }
+  .inl{ display:inline-flex; gap:5px; align-items:center; font-weight:500; margin:0; font-size:12.5px; } .inl input{ width:auto; }
+  tr.past td{ color:var(--ink-muted); } tr.cancel td{ text-decoration:line-through; color:var(--ink-muted); } tr.cancel td:last-child, tr.cancel td:nth-child(4){ text-decoration:none; }
+  tr.dirty td:first-child{ box-shadow:inset 3px 0 0 var(--amber); }
   .modal{ position:fixed; inset:0; z-index:40; background:rgba(10,20,16,.5); display:flex; align-items:flex-start; justify-content:center; overflow:auto; padding:24px 12px; }
   .modal .box{ background:var(--paper); width:100%; max-width:760px; border-radius:16px; padding:16px; box-shadow:0 12px 40px rgba(0,0,0,.25); }
   .modal h3{ margin:0 0 4px; font-size:17px; } .steps{ display:flex; gap:6px; margin:8px 0 12px; font-size:12px; color:var(--ink-muted); flex-wrap:wrap; }
@@ -208,6 +227,7 @@
   <div id="pwaSlot"></div>
   <nav class="nav" id="mainNav" hidden>
     <a href="#cal" data-nav="cal">📅 ปฏิทินแล็บ</a>
+    <a href="#setup" data-nav="setup">⚙️ ตั้งค่าเทอม</a>
     <a href="#roster" data-nav="roster">👥 รายชื่อนักศึกษา</a>
   </nav>
 
@@ -284,6 +304,77 @@
       <div class="tablewrap"><table class="rt" id="rosterTable"></table></div>
     </div>
     <div class="err" id="rosterErr"></div>
+  </section>
+
+  <!-- ตั้งค่าเทอมล่วงหน้า: ห้อง/วันหยุด → วันเวลาเรียน → บทปฏิบัติการ → แผนรายคาบ (ก่อนนำเข้ารายชื่อ) -->
+  <section id="viewSetup" hidden>
+    <div class="rbar">
+      <label style="margin:0">เทอม</label>
+      <select id="stTermSel"></select>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost btn-sm" id="btnHolidays">🎌 วันหยุด</button>
+      <button class="btn btn-ghost btn-sm" id="btnRooms">🏫 ห้อง/พิกัด</button>
+    </div>
+    <div class="steps4" id="stSteps">
+      <span><b>1</b> ห้อง + วันหยุด</span><span><b>2</b> วันเวลาเรียน → สร้างคาบ</span><span><b>3</b> บทปฏิบัติการ</span><span><b>4</b> บทของแต่ละคาบ</span><span class="later"><b>5</b> ใบงาน/วัสดุ <i>(รอบถัดไป)</i></span><span class="later"><b>6</b> นำเข้ารายชื่อหลังลงทะเบียน</span>
+    </div>
+    <div class="card" id="holCard" hidden>
+      <div class="row"><b>วันหยุดของเทอม</b><span class="muted">— ระบบจะไม่สร้างคาบในวันเหล่านี้</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="holClose">ปิด</button></div>
+      <div id="holList" style="margin:8px 0"></div>
+      <div class="row"><button class="btn btn-ghost btn-sm" id="holAdd">+ เพิ่มวันหยุด</button><span class="spacer"></span><button class="btn btn-primary btn-sm" id="holSave">บันทึกวันหยุด</button></div>
+      <div class="muted" style="margin-top:6px">วันหยุดที่เพิ่มทีหลังไม่ลบคาบที่สร้างไปแล้วเอง — เปิดกลุ่มเรียนแล้วกด "ดูตัวอย่าง" อีกครั้งเพื่อปรับคาบ</div>
+    </div>
+    <div class="card" id="roomCard" hidden>
+      <div class="row"><b>ห้องปฏิบัติการ</b><span class="muted">— พิกัด + รัศมีใช้ตรวจว่าอยู่ในห้องตอนสแกน</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="roomClose">ปิด</button></div>
+      <div id="roomList" style="margin:8px 0"></div>
+      <div class="form" id="roomForm">
+        <input type="hidden" id="rmId">
+        <div class="f"><label>ชื่อห้อง</label><input id="rmName" size="18"></div>
+        <div class="f"><label>อาคาร</label><input id="rmBldg" size="10"></div>
+        <div class="f"><label>ชั้น</label><input id="rmFloor" size="3"></div>
+        <div class="f"><label>ละติจูด</label><input id="rmLat" size="10" inputmode="decimal"></div>
+        <div class="f"><label>ลองจิจูด</label><input id="rmLng" size="10" inputmode="decimal"></div>
+        <div class="f"><label>รัศมี (ม.)</label><input id="rmRad" size="4" value="30" inputmode="numeric"></div>
+        <button class="btn btn-ghost btn-sm" id="rmHere" title="ยืนอยู่ในห้องแล้วกด">📍 ใช้ตำแหน่งตอนนี้</button>
+        <button class="btn btn-primary btn-sm" id="rmSave">บันทึกห้อง</button>
+      </div>
+    </div>
+    <div id="stSecList"></div>
+    <div class="card" id="stCard" hidden>
+      <div class="row"><b id="stTitle"></b><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="stClose">ปิด</button></div>
+      <div class="muted" id="stSub" style="margin:2px 0 10px"></div>
+
+      <h3 class="sth">① วันเวลาเรียนประจำสัปดาห์</h3>
+      <div id="slotRows"></div>
+      <div class="form" style="border-style:solid">
+        <button class="btn btn-ghost btn-sm" id="slotAdd">+ เพิ่มช่วงเวลา</button>
+        <div class="f"><label>สร้างคาบตั้งแต่</label><input type="date" id="stFrom"></div>
+        <div class="f"><label>ถึง</label><input type="date" id="stTo"></div>
+        <button class="btn btn-primary btn-sm" id="slotPreview">ดูตัวอย่างคาบ</button>
+      </div>
+      <div id="slotPlan"></div>
+
+      <h3 class="sth">② บทปฏิบัติการของวิชา <span class="muted" id="topicNote"></span></h3>
+      <div id="topicRows"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn btn-ghost btn-sm" id="topicAdd">+ เพิ่มบท</button>
+        <button class="btn btn-ghost btn-sm" id="topicPaste">📋 วางรายการบท</button>
+        <select id="topicCopyFrom" class="selsm"><option value="">คัดลอกบทจากวิชา…</option></select>
+        <span class="spacer"></span>
+        <button class="btn btn-primary btn-sm" id="topicSave">บันทึกบท</button>
+      </div>
+
+      <h3 class="sth">③ บทของแต่ละคาบ</h3>
+      <div class="row" style="margin-bottom:6px">
+        <button class="btn btn-ghost btn-sm" id="planAuto">เติมบทตามลำดับ (คาบที่ 1 = บทที่ 1 …)</button>
+        <label class="inl"><input type="checkbox" id="planAllSec"> ทำกับทุกกลุ่มเรียนของวิชานี้ที่ฉันแก้ได้</label>
+        <span class="spacer"></span>
+        <button class="btn btn-primary btn-sm" id="planSave" disabled>บันทึกแผน</button>
+      </div>
+      <div class="tablewrap" style="max-height:480px"><table class="rt" id="planTable"></table></div>
+      <div class="err" id="stErr"></div>
+    </div>
+    <div class="err" id="setupErr"></div>
   </section>
 
   <!-- คาบทั้งหมดของวัน -->
@@ -413,9 +504,9 @@ async function staffApi(action, extra = {}, fn = 'staff') {
 }
 
 function show(view) {
-  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster'].forEach((v) => ($(v).hidden = v !== view));
+  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup'].forEach((v) => ($(v).hidden = v !== view));
   $('mainNav').hidden = view === 'viewLogin';
-  const nav = view === 'viewRoster' ? 'roster' : 'cal';
+  const nav = view === 'viewRoster' ? 'roster' : view === 'viewSetup' ? 'setup' : 'cal';
   $('mainNav').querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.nav === nav));
   window.scrollTo(0, 0);
 }
@@ -462,6 +553,7 @@ function route() {
   stopRefresh(); stopDayRefresh();
   if (kind === 's' && arg) return openSession(arg);
   if (kind === 'roster') return openRoster(arg || null);
+  if (kind === 'setup') return openSetup(arg || null, location.hash.split('/')[2] || null);
   if (kind === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '')) return openDay(arg);
   return openCal(/^\d{4}-\d{2}$/.test(arg || '') ? arg : bkkToday().slice(0, 7));
 }
@@ -626,7 +718,7 @@ function renderDay() {
       const w = (n) => (s.total ? (n / s.total) * 100 : 0);
       return `<button class="srow ${s.phase === 'live' ? 'live' : ''}" data-id="${esc(s.schedule_id)}">
         <span class="time">${esc(s.start_time)}–${esc(s.end_time)}</span>
-        <span class="info">กลุ่ม ${esc(s.section_no)} · ${esc(s.room)}</span>
+        <span class="info">กลุ่ม ${esc(s.section_no)} · ${esc(s.room)}${s.topic_title ? `<br><span class="topic">🧪 บทที่ ${esc(s.topic_seq)} ${esc(s.topic_title)}</span>` : ''}</span>
         <span><span class="badge ${ph.cls}">${ph.label}</span></span>
         ${s.phase === 'upcoming' ? `<span class="counts" style="grid-column:1/-1">${s.total} คน</span>` : `
         <div class="bar"><i class="c-present" style="width:${w(s.present)}%"></i><i class="c-late" style="width:${w(s.late)}%"></i><i class="c-excused" style="width:${w(s.excused)}%"></i><i class="c-absent" style="width:${w(s.absent)}%"></i></div>
@@ -704,6 +796,7 @@ function renderHead() {
     <div class="row"><span class="mono" style="font-weight:600">${esc(s.start_time)}–${esc(s.end_time)} น.</span><span class="badge ${st.cls}">${st.label}</span></div>
     <div style="font-size:17px;font-weight:700;margin-top:4px;">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)} · ${esc(s.course_name)}</div>
     <div class="muted">${esc(s.room)} · ${thDay(s.class_date)} · สายเมื่อเกิน ${esc(s.late_threshold_minutes)} นาที</div>
+    ${s.topic_title ? `<div style="margin-top:4px">🧪 <b>ปฏิบัติการที่ ${esc(s.topic_seq)}</b> ${esc(s.topic_title)}${s.plan_note ? ` <span class="muted">· ${esc(s.plan_note)}</span>` : ''}</div>` : ''}
     <div class="muted">${esc(s.department_name || '')}${s.instructor_name ? ` · ผู้สอน ${esc(s.instructor_name)}` : ''}${s.editable ? '' : ' · <b>ดูได้อย่างเดียว</b> (แก้ได้เฉพาะอาจารย์ผู้สอน)'}</div>`;
   $('tiles').innerHTML = [
     ['มา', c.present, 'var(--teal-dark)'], ['สาย', c.late, 'var(--amber-ink)'], ['ลา', c.excused, 'var(--blue)'],
@@ -923,7 +1016,7 @@ function buildSignSheet(d) {
   const full = (text, style, h) => { rows.push({ h, cells: [{ v: text, s: style }] }); merges.push(`A${rows.length}:J${rows.length}`); };
   full('ใบเซ็นชื่อเข้าเรียนปฏิบัติการ', T, 32);
   full(`รายวิชา ${s.course_code ?? ''} ${s.course_name ?? ''}    กลุ่มเรียน ${s.section_no ?? ''}${sec.term ? `    ภาคเรียนที่ ${sec.term}` : ''}`, H, 24);
-  full('ปฏิบัติการที่ ..........    เรื่อง ..........................................................................................', H, 24);
+  full(s.topic_title ? `ปฏิบัติการที่ ${s.topic_seq}    เรื่อง ${s.topic_title}` : 'ปฏิบัติการที่ ..........    เรื่อง ..........................................................................................', H, 24);
   full(`${dateTh}    เวลา ${s.start_time}–${s.end_time} น.    ห้อง ${s.room ?? '-'}`, H, 24);
   rows.push({ h: 8, cells: [] });
 
@@ -1372,6 +1465,285 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && cu
   const { data: { session } } = await sb.auth.getSession();
   if (session) start(); else showLogin();
 })();
+
+// ================= ตั้งค่าเทอมล่วงหน้า =================
+// ลำดับ: ห้อง/วันหยุด → วันเวลาเรียนของกลุ่ม (สร้างคาบทั้งเทอม) → บทปฏิบัติการของวิชา → บทของแต่ละคาบ → (ใบงาน/วัสดุ) → นำเข้ารายชื่อ
+const WDL = ['', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
+const WDS = ['', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
+let stTerm = null, stSections = [], st = null; // st = ข้อมูลกลุ่มเรียนที่เปิดอยู่
+
+async function openSetup(semesterId, sectionId) {
+  show('viewSetup'); $('setupErr').textContent = '';
+  try {
+    if (!boot) boot = await manageApi('bootstrap');
+    const isAdmin = boot.user.role === 'admin';
+    $('btnHolidays').hidden = !isAdmin; $('btnRooms').hidden = !isAdmin;
+    if (!boot.terms.length) { $('stSecList').innerHTML = `<div class="card muted">ยังไม่มีเทอม — สร้างที่หน้า "รายชื่อนักศึกษา" (+ เทอมใหม่)</div>`; return; }
+    const today = bkkToday();
+    stTerm = semesterId && boot.terms.some((t) => t.semester_id === semesterId) ? semesterId
+      : (boot.terms.find((t) => t.start_date <= today && today <= t.end_date) || boot.terms[0]).semester_id;
+    $('stTermSel').innerHTML = boot.terms.map((t) => `<option value="${esc(t.semester_id)}">${esc(t.label)}</option>`).join('');
+    $('stTermSel').value = stTerm;
+    await loadSetupSections();
+    if (sectionId && stSections.some((s) => s.section_id === sectionId)) await openSectionSetup(sectionId);
+    else $('stCard').hidden = true;
+  } catch (err) { $('setupErr').textContent = err.message; }
+}
+$('stTermSel').onchange = () => go(`#setup/${$('stTermSel').value}`);
+
+async function loadSetupSections() {
+  $('stSecList').innerHTML = '<div class="muted">กำลังโหลด…</div>';
+  stSections = (await manageApi('term_sections', { semester_id: stTerm })).sections;
+  assignColors(stSections.map((s) => s.course_code));
+  if (!stSections.length) { $('stSecList').innerHTML = `<div class="card muted">เทอมนี้ยังไม่มีกลุ่มเรียน — เพิ่มที่หน้า "รายชื่อนักศึกษา" (+ กลุ่มเรียน)</div>`; return; }
+  const ok = (b) => (b ? '✅' : '⬜');
+  $('stSecList').innerHTML = stSections.map((s) => {
+    const slots = s.slots.length ? s.slots.map((x) => `${WDS[x.weekday]} ${x.start_time}–${x.end_time} ${esc(x.room)}`).join(' · ') : 'ยังไม่ตั้งวันเวลา';
+    return `<div class="secrow" style="border-left-color:${courseColor(s.course_code)}">
+      <div><div class="t">${esc(s.course_code)} กลุ่ม ${esc(s.section_no)} <span style="font-weight:500">· ${esc(s.course_name)}</span></div>
+        <div class="m">${ok(s.slots.length)} ${slots}</div>
+        <div class="m">${ok(s.sessions)} ${s.sessions} คาบ · ${ok(s.course_topics)} บทของวิชา ${s.course_topics} บท · ${ok(s.sessions && s.sessions_with_topic === s.sessions)} คาบที่กำหนดบทแล้ว ${s.sessions_with_topic}/${s.sessions} · 👥 ${s.enrolled} คน</div></div>
+      <div class="acts"><button class="btn ${s.editable ? 'btn-primary' : 'btn-ghost'} btn-sm" data-st="${esc(s.section_id)}">${s.editable ? 'ตั้งค่า' : 'ดู'}</button></div>
+    </div>`;
+  }).join('');
+  $('stSecList').querySelectorAll('[data-st]').forEach((b) => b.onclick = () => go(`#setup/${stTerm}/${b.dataset.st}`));
+}
+
+async function openSectionSetup(sectionId) {
+  $('stCard').hidden = false; $('stErr').textContent = ''; $('slotPlan').innerHTML = '';
+  $('stTitle').textContent = 'กำลังโหลด…';
+  const d = await manageApi('setup_get', { section_id: sectionId });
+  st = { ...d, dirty: new Map(), plan: null };
+  const s = d.section;
+  $('stTitle').textContent = `${s.course_code} กลุ่ม ${s.section_no} · ${s.course_name}`;
+  $('stSub').innerHTML = `${esc(s.instructor_name || 'ยังไม่ระบุผู้สอน')} · ภาคเรียน ${esc(s.term || '')}${s.editable ? '' : ' · <b>ดูได้อย่างเดียว</b> (แก้ได้เฉพาะอาจารย์ผู้สอน/แอดมิน)'}`;
+  $('stFrom').value = d.teach_from || ''; $('stTo').value = d.teach_to || '';
+  st.slots = d.slots.length ? d.slots.map((x) => ({ ...x })) : [];
+  renderSlots(); renderTopics(); renderPlanTable();
+  const ed = s.editable;
+  ['slotAdd', 'slotPreview', 'stFrom', 'stTo', 'planAuto'].forEach((id) => ($(id).disabled = !ed));
+  ['topicAdd', 'topicPaste', 'topicSave', 'topicCopyFrom'].forEach((id) => ($(id).disabled = !d.course_editable));
+  $('topicNote').textContent = `— ใช้ร่วมทุกกลุ่มเรียนของ ${s.course_code}`;
+  $('topicCopyFrom').innerHTML = '<option value="">คัดลอกบทจากวิชา…</option>' + boot.courses.filter((c) => c.course_id !== s.course_id).map((c) => `<option value="${esc(c.course_id)}">${esc(c.course_code)} ${esc(c.course_name)}</option>`).join('');
+  $('stCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+$('stClose').onclick = () => go(`#setup/${stTerm}`);
+
+// ---- ① วันเวลาเรียน ----
+const roomOpts = (sel) => (boot.rooms || []).map((r) => `<option value="${esc(r.location_id)}" ${r.location_id === sel ? 'selected' : ''}>${esc(r.name)}</option>`).join('');
+function renderSlots() {
+  const ed = st.section.editable;
+  if (!st.slots.length) { $('slotRows').innerHTML = `<div class="muted" style="margin-bottom:6px">ยังไม่มีช่วงเวลา — กด "+ เพิ่มช่วงเวลา" (เช่น อังคาร 13:00–16:00)</div>`; return; }
+  $('slotRows').innerHTML = st.slots.map((x, i) => `<div class="slot" data-i="${i}">
+    <select data-k="weekday" ${ed ? '' : 'disabled'}>${WDL.slice(1).map((w, j) => `<option value="${j + 1}" ${x.weekday === j + 1 ? 'selected' : ''}>ทุกวัน${w}</option>`).join('')}</select>
+    <input type="time" data-k="start_time" value="${esc(x.start_time)}" ${ed ? '' : 'disabled'}> – <input type="time" data-k="end_time" value="${esc(x.end_time)}" ${ed ? '' : 'disabled'}>
+    <select data-k="location_id" ${ed ? '' : 'disabled'}><option value="">— เลือกห้อง —</option>${roomOpts(x.location_id)}</select>
+    ${ed ? `<button class="btn btn-ghost btn-sm" data-del="${i}" aria-label="ลบช่วงเวลา">✕</button>` : ''}</div>`).join('');
+  $('slotRows').querySelectorAll('.slot').forEach((row) => row.querySelectorAll('[data-k]').forEach((el) => el.onchange = () => {
+    const x = st.slots[Number(row.dataset.i)]; x[el.dataset.k] = el.dataset.k === 'weekday' ? Number(el.value) : el.value; $('slotPlan').innerHTML = '';
+  }));
+  $('slotRows').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { st.slots.splice(Number(b.dataset.del), 1); renderSlots(); $('slotPlan').innerHTML = ''; });
+}
+$('slotAdd').onclick = () => {
+  const last = st.slots[st.slots.length - 1];
+  st.slots.push(last ? { ...last, weekday: (last.weekday % 7) + 1 } : { weekday: 2, start_time: '13:00', end_time: '16:00', location_id: boot.rooms?.[0]?.location_id || '' });
+  renderSlots(); $('slotPlan').innerHTML = '';
+};
+const slotBody = () => ({ section_id: st.section.section_id, teach_from: $('stFrom').value, teach_to: $('stTo').value, slots: st.slots.map((x) => ({ weekday: x.weekday, start_time: x.start_time, end_time: x.end_time, location_id: x.location_id })) });
+$('slotPreview').onclick = async () => {
+  $('stErr').textContent = ''; $('slotPlan').innerHTML = '<div class="muted">กำลังคำนวณ…</div>';
+  try { st.plan = await manageApi('slots_plan', slotBody()); renderSlotPlan(); } catch (err) { $('slotPlan').innerHTML = ''; $('stErr').textContent = err.message; }
+};
+function renderSlotPlan() {
+  const p = st.plan, c = p.counts;
+  const li = (arr, f, n) => arr.length ? `<ul>${arr.map(f).join('')}${n > arr.length ? `<li class="muted">…และอีก ${n - arr.length}</li>` : ''}</ul>` : '';
+  const dt = (d) => thDayShort(d);
+  const roomName = (id) => (boot.rooms || []).find((r) => r.location_id === id)?.name || '';
+  const nothing = !c.create && !c.update && !c.remove;
+  const conflictDates = [...new Map(p.conflicts.map((x) => [`${x.class_date}|${x.start_time}`, x])).values()];
+  $('slotPlan').innerHTML = `<div class="plan">
+    <div class="k"><span class="k-add">+ สร้างใหม่ ${c.create}</span><span class="k-upd">✎ ปรับเวลา/ห้อง ${c.update}</span><span class="k-del">− ลบ ${c.remove}</span><span class="k-keep">คงเดิม ${c.keep}</span>
+      ${c.blocked ? `<span class="k-warn">🔒 มีเช็คชื่อแล้ว ไม่ลบ ${c.blocked}</span>` : ''}${c.holidays ? `<span class="k-keep">ข้ามวันหยุด ${c.holidays}</span>` : ''}${c.past_skipped ? `<span class="k-keep">ข้ามวันที่ผ่านมาแล้ว ${c.past_skipped}</span>` : ''}</div>
+    ${c.create ? `<b>สร้างใหม่</b>${li(p.create, (x) => `<li>${dt(x.class_date)} ${x.start_time}–${x.end_time} ${esc(roomName(x.location_id))}</li>`, c.create)}` : ''}
+    ${c.update ? `<b>ปรับคาบเดิม</b> (บทที่กำหนดไว้ยังอยู่)${li(p.update, (x) => `<li>${dt(x.class_date)} ${x.from_start}–${x.from_end} → <b>${x.start_time}–${x.end_time}</b>${x.from_location !== x.location_id ? ` ห้อง ${esc(roomName(x.location_id))}` : ''}</li>`, c.update)}` : ''}
+    ${c.remove ? `<b style="color:var(--brick)">ลบคาบ</b>${li(p.remove, (x) => `<li>${dt(x.class_date)} ${x.start_time}–${x.end_time}${x.has_topic ? ' <span class="muted">(มีบทกำหนดไว้)</span>' : ''}</li>`, c.remove)}` : ''}
+    ${c.blocked ? `<b>คาบที่ไม่ตรงแผนแต่มีเช็คชื่อแล้ว — ระบบไม่ลบ</b>${li(p.blocked, (x) => `<li>${dt(x.class_date)} ${x.start_time}–${x.end_time}</li>`, c.blocked)}` : ''}
+    ${p.holidays.length ? `<div class="muted">วันหยุดที่ข้าม: ${p.holidays.map((h) => `${dt(h.date)} ${esc(h.name)}`).join(' · ')}</div>` : ''}
+    ${conflictDates.length ? `<div class="err" style="margin-top:8px">⚠️ ห้องชนกับวิชาอื่น ${conflictDates.length} คาบ (บันทึกได้ แต่ตรวจก่อน):${li(conflictDates.slice(0, 8), (x) => `<li>${dt(x.class_date)} ${x.start_time}–${x.end_time} ชนกับ ${esc(x.with)}</li>`, conflictDates.length)}</div>` : ''}
+    <div class="row" style="margin-top:8px"><span class="muted">คาบในอดีตไม่ถูกแก้ไข · ประวัติเช็คชื่อไม่ถูกลบ</span><span class="spacer"></span>
+      ${nothing ? '<span class="muted">ไม่มีอะไรเปลี่ยน</span>' : `<button class="btn btn-primary btn-sm" id="slotApply">ยืนยัน${c.remove ? ` (ลบ ${c.remove} คาบ)` : ''}</button>`}</div>
+  </div>`;
+  if (!nothing) $('slotApply').onclick = async () => {
+    if (c.remove && !confirmInline($('slotApply'), `กดอีกครั้งเพื่อยืนยันลบ ${c.remove} คาบ`)) return;
+    $('slotApply').disabled = true;
+    try {
+      const r = await manageApi('slots_plan', { ...slotBody(), apply: true });
+      toast(`สร้าง ${r.applied.created} · ปรับ ${r.applied.updated} · ลบ ${r.applied.removed} คาบ`);
+      await refreshSetup();
+    } catch (err) { $('stErr').textContent = err.message; $('slotApply').disabled = false; }
+  };
+}
+// ยืนยันด้วยการกดซ้ำ (ไม่ใช้ confirm() ของเบราว์เซอร์)
+function confirmInline(btn, msg) {
+  if (btn.dataset.armed) return true;
+  btn.dataset.armed = '1'; btn.dataset.orig = btn.textContent; btn.textContent = msg; btn.style.background = 'var(--brick)';
+  setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = btn.dataset.orig; btn.style.background = ''; } }, 4000);
+  return false;
+}
+async function refreshSetup() { const id = st.section.section_id; await loadSetupSections(); await openSectionSetup(id); }
+
+// ---- ② บทปฏิบัติการของวิชา ----
+function renderTopics() {
+  const ed = st.course_editable;
+  $('topicRows').innerHTML = st.topics.length ? st.topics.map((t, i) => `<div class="trow" data-i="${i}">
+    <input data-k="seq" value="${esc(t.seq)}" inputmode="numeric" title="ปฏิบัติการที่" ${ed ? '' : 'disabled'}>
+    <input data-k="title_th" value="${esc(t.title_th)}" placeholder="ชื่อบท (ไทย)" ${ed ? '' : 'disabled'}>
+    <input class="en" data-k="title_en" value="${esc(t.title_en ?? '')}" placeholder="English title (ไม่บังคับ)" ${ed ? '' : 'disabled'}>
+    ${ed ? `<button class="btn btn-ghost btn-sm" data-del="${i}" aria-label="ลบบท">✕</button>` : '<span></span>'}</div>`).join('')
+    : `<div class="muted">ยังไม่มีบท — กด "+ เพิ่มบท" หรือ "วางรายการบท" (1 บรรทัด = 1 บท)</div>`;
+  $('topicRows').querySelectorAll('.trow').forEach((row) => row.querySelectorAll('[data-k]').forEach((el) => el.oninput = () => {
+    const t = st.topics[Number(row.dataset.i)]; t[el.dataset.k] = el.dataset.k === 'seq' ? Number(el.value) || 0 : el.value; t._dirty = true;
+  }));
+  $('topicRows').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { st.topics.splice(Number(b.dataset.del), 1); st.topicsRemoved = true; renderTopics(); });
+}
+$('topicAdd').onclick = () => { st.topics.push({ seq: Math.max(0, ...st.topics.map((t) => Number(t.seq) || 0)) + 1, title_th: '', title_en: '' }); renderTopics(); $('topicRows').lastElementChild?.querySelector('[data-k=title_th]')?.focus(); };
+$('topicPaste').onclick = () => {
+  // วางจาก Word/Excel: "1 การกลั่น" · "ปฏิบัติการที่ 2 เรื่อง การสกัด" · "3<TAB>การสกัด<TAB>Extraction"
+  const box = document.createElement('textarea');
+  box.rows = 6; box.placeholder = 'วางรายการบท 1 บรรทัดต่อ 1 บท เช่น\n1 ความปลอดภัยในห้องปฏิบัติการ\n2 การกลั่น\n3 การสกัด';
+  box.style.marginTop = '6px';
+  const ok = document.createElement('button'); ok.className = 'btn btn-primary btn-sm'; ok.textContent = 'เพิ่มจากที่วาง'; ok.style.marginTop = '6px';
+  $('topicRows').append(box, ok); box.focus();
+  ok.onclick = () => {
+    let n = Math.max(0, ...st.topics.map((t) => Number(t.seq) || 0));
+    for (const line of box.value.split(/\r?\n/)) {
+      const cols = line.split('\t').map((x) => x.trim());
+      let text = cols[0], en = cols.length > 2 ? cols[2] : '';
+      let seq = null;
+      if (cols.length > 1 && /^\d+$/.test(cols[0])) { seq = Number(cols[0]); text = cols[1]; }
+      const m = /^(?:ปฏิบัติการที่|บทที่|lab)?\s*(\d+)[\s.:)\-–]+(?:เรื่อง\s*)?(.+)$/i.exec(text);
+      if (seq == null && m) { seq = Number(m[1]); text = m[2]; }
+      text = (text || '').replace(/^เรื่อง\s*/, '').trim();
+      if (!text) continue;
+      st.topics.push({ seq: seq ?? ++n, title_th: text, title_en: en, _dirty: true });
+      n = Math.max(n, seq ?? n);
+    }
+    st.topics.sort((a, b) => a.seq - b.seq); renderTopics();
+  };
+};
+$('topicSave').onclick = async () => {
+  if (st.topics.some((t) => !String(t.title_th).trim())) { $('stErr').textContent = 'ทุกบทต้องมีชื่อภาษาไทย'; return; }
+  $('stErr').textContent = '';
+  try {
+    const r = await manageApi('topics_save', { course_id: st.section.course_id, topics: st.topics.map((t) => ({ topic_id: t.topic_id, seq: t.seq, title_th: t.title_th, title_en: t.title_en })) });
+    st.topics = r.topics; renderTopics(); renderPlanTable(); toast(`บันทึก ${r.topics.length} บทแล้ว`); loadSetupSections();
+  } catch (err) { $('stErr').textContent = err.message; }
+};
+$('topicCopyFrom').onchange = async () => {
+  const from = $('topicCopyFrom').value; if (!from) return;
+  try {
+    const r = await manageApi('topics_copy', { from_course_id: from, to_course_id: st.section.course_id });
+    toast(`คัดลอก ${r.copied} บทแล้ว`); await refreshSetup();
+  } catch (err) { $('stErr').textContent = err.message; $('topicCopyFrom').value = ''; }
+};
+
+// ---- ③ บทของแต่ละคาบ ----
+function renderPlanTable() {
+  const ed = st.section.editable, today = bkkToday();
+  const topicOpts = (sel) => '<option value="">— ยังไม่กำหนด —</option>' + st.topics.filter((t) => t.topic_id).map((t) => `<option value="${esc(t.topic_id)}" ${t.topic_id === sel ? 'selected' : ''}>${esc(t.seq)}. ${esc(t.title_th)}</option>`).join('');
+  if (!st.sessions.length) { $('planTable').innerHTML = '<tr><td class="muted">ยังไม่มีคาบ — ตั้งวันเวลาเรียนในข้อ ① แล้วกดยืนยัน</td></tr>'; return; }
+  let k = 0;
+  $('planTable').innerHTML = `<thead><tr><th>คาบ</th><th>วันที่</th><th>เวลา/ห้อง</th><th>บทปฏิบัติการ</th><th>หมายเหตุ</th><th>งด</th></tr></thead><tbody>` +
+    st.sessions.map((x) => {
+      const cancelled = x.status === 'cancelled', past = x.class_date < today;
+      const d = st.dirty.get(x.schedule_id) || {};
+      const topic = 'topic_id' in d ? d.topic_id : x.topic_id, note = 'note' in d ? d.note : (x.note || ''), stt = d.status || x.status;
+      return `<tr data-id="${esc(x.schedule_id)}" class="${stt === 'cancelled' ? 'cancel' : ''} ${past ? 'past' : ''} ${st.dirty.has(x.schedule_id) ? 'dirty' : ''}">
+        <td class="mono">${cancelled ? '–' : ++k}</td><td>${thDayShort(x.class_date)}${x.has_attendance ? ' <span title="มีเช็คชื่อแล้ว">🔒</span>' : ''}</td>
+        <td class="mono" style="font-size:12px">${x.start_time}–${x.end_time}<br><span class="muted">${esc(x.room || '')}</span></td>
+        <td><select data-k="topic_id" ${ed ? '' : 'disabled'}>${topicOpts(topic)}</select></td>
+        <td><input data-k="note" value="${esc(note)}" size="12" placeholder="เช่น สอบย่อย" ${ed ? '' : 'disabled'}></td>
+        <td><input type="checkbox" data-k="status" ${stt === 'cancelled' ? 'checked' : ''} ${ed && !x.has_attendance ? '' : 'disabled'} title="งดคาบ (เช่น หยุดชดเชย)"></td></tr>`;
+    }).join('') + '</tbody>';
+  $('planTable').querySelectorAll('tr[data-id]').forEach((tr) => tr.querySelectorAll('[data-k]').forEach((el) => el.onchange = () => {
+    const id = tr.dataset.id, d = st.dirty.get(id) || {};
+    if (el.dataset.k === 'status') d.status = el.checked ? 'cancelled' : 'scheduled';
+    else d[el.dataset.k] = el.value || (el.dataset.k === 'topic_id' ? null : '');
+    st.dirty.set(id, d); renderPlanTable();
+  }));
+  $('planSave').disabled = !st.dirty.size;
+}
+$('planSave').onclick = async () => {
+  $('planSave').disabled = true;
+  try {
+    const r = await manageApi('session_plan_save', { assignments: [...st.dirty.entries()].map(([schedule_id, d]) => ({ schedule_id, ...d })) });
+    toast(`บันทึก ${r.updated} คาบแล้ว`); await refreshSetup();
+  } catch (err) { $('stErr').textContent = err.message; $('planSave').disabled = false; }
+};
+$('planAuto').onclick = async () => {
+  if (!st.topics.some((t) => t.topic_id)) { $('stErr').textContent = 'บันทึกบทปฏิบัติการ (ข้อ ②) ก่อน'; return; }
+  const ids = $('planAllSec').checked ? stSections.filter((s) => s.course_id === st.section.course_id && s.editable).map((s) => s.section_id) : [st.section.section_id];
+  const hasSet = st.sessions.some((x) => x.topic_id);
+  if (hasSet && !confirmInline($('planAuto'), 'มีบางคาบกำหนดบทแล้ว — กดอีกครั้งเพื่อเรียงใหม่ทั้งหมด')) return;
+  try {
+    const r = await manageApi('plan_autofill', { section_ids: ids, only_empty: false });
+    toast(`เติมบทแล้ว ${Object.values(r.updated).reduce((a, b) => a + b, 0)} คาบ (${ids.length} กลุ่ม)`); await refreshSetup();
+  } catch (err) { $('stErr').textContent = err.message; }
+};
+
+// ---- วันหยุด (แอดมิน) ----
+let holidays = [];
+$('btnHolidays').onclick = async () => {
+  $('holCard').hidden = !$('holCard').hidden; $('roomCard').hidden = true;
+  if ($('holCard').hidden) return;
+  holidays = (await manageApi('holidays_get', { semester_id: stTerm })).holidays.map((h) => ({ date: h.holiday_date, name: h.name }));
+  renderHolidays();
+};
+$('holClose').onclick = () => ($('holCard').hidden = true);
+function renderHolidays() {
+  $('holList').innerHTML = holidays.length ? holidays.map((h, i) => `<div class="slot" data-i="${i}"><input type="date" data-k="date" value="${esc(h.date)}"><input data-k="name" value="${esc(h.name)}" size="22" placeholder="ชื่อวันหยุด"><span class="muted">${h.date ? WDL[((new Date(h.date + 'T12:00:00Z').getUTCDay() + 6) % 7) + 1] : ''}</span><button class="btn btn-ghost btn-sm" data-del="${i}">✕</button></div>`).join('') : '<div class="muted">ยังไม่มีวันหยุด</div>';
+  $('holList').querySelectorAll('.slot').forEach((row) => row.querySelectorAll('[data-k]').forEach((el) => el.onchange = () => { holidays[Number(row.dataset.i)][el.dataset.k] = el.value; if (el.dataset.k === 'date') renderHolidays(); }));
+  $('holList').querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { holidays.splice(Number(b.dataset.del), 1); renderHolidays(); });
+}
+$('holAdd').onclick = () => { holidays.push({ date: '', name: '' }); renderHolidays(); };
+$('holSave').onclick = async () => {
+  try {
+    const r = await manageApi('holidays_save', { semester_id: stTerm, holidays: holidays.filter((h) => h.date) });
+    toast(`บันทึกวันหยุด ${r.saved} วันแล้ว`); holidays.sort((a, b) => a.date.localeCompare(b.date)); renderHolidays();
+  } catch (err) { toast(err.message); }
+};
+
+// ---- ห้อง (แอดมิน) ----
+$('btnRooms').onclick = () => { $('roomCard').hidden = !$('roomCard').hidden; $('holCard').hidden = true; renderRooms(); };
+$('roomClose').onclick = () => ($('roomCard').hidden = true);
+function renderRooms() {
+  $('roomList').innerHTML = (boot.rooms || []).map((r) => `<div class="secrow" style="border-left-color:var(--blue)"><div><div class="t">${esc(r.name)}</div>
+    <div class="m">${esc([r.building, r.floor && `ชั้น ${r.floor}`].filter(Boolean).join(' '))} · <span class="mono">${Number(r.latitude).toFixed(6)}, ${Number(r.longitude).toFixed(6)}</span> · รัศมี ${r.radius_meters} ม.
+      · <a href="https://www.google.com/maps?q=${r.latitude},${r.longitude}" target="_blank" rel="noopener">แผนที่</a></div></div>
+    <div class="acts"><button class="btn btn-ghost btn-sm" data-edit="${esc(r.location_id)}">แก้</button></div></div>`).join('') || '<div class="muted">ยังไม่มีห้อง</div>';
+  $('roomList').querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => {
+    const r = boot.rooms.find((x) => x.location_id === b.dataset.edit);
+    $('rmId').value = r.location_id; $('rmName').value = r.name; $('rmBldg').value = r.building || ''; $('rmFloor').value = r.floor || '';
+    $('rmLat').value = r.latitude; $('rmLng').value = r.longitude; $('rmRad').value = r.radius_meters; $('rmSave').textContent = 'บันทึกการแก้ไข';
+  });
+}
+$('rmHere').onclick = () => {
+  if (!navigator.geolocation) return toast('อุปกรณ์นี้ไม่รองรับตำแหน่ง');
+  $('rmHere').disabled = true;
+  navigator.geolocation.getCurrentPosition((p) => {
+    $('rmLat').value = p.coords.latitude.toFixed(7); $('rmLng').value = p.coords.longitude.toFixed(7); $('rmHere').disabled = false;
+    toast(`ได้ตำแหน่งแล้ว (คลาดเคลื่อน ±${Math.round(p.coords.accuracy)} ม.)`);
+  }, (e) => { $('rmHere').disabled = false; toast('อ่านตำแหน่งไม่ได้: ' + e.message); }, { enableHighAccuracy: true, timeout: 15000 });
+};
+$('rmSave').onclick = async () => {
+  try {
+    const r = await manageApi('rooms_save', { location_id: $('rmId').value || undefined, name: $('rmName').value, building: $('rmBldg').value, floor: $('rmFloor').value, latitude: $('rmLat').value, longitude: $('rmLng').value, radius_meters: $('rmRad').value });
+    const i = boot.rooms.findIndex((x) => x.location_id === r.location_id);
+    if (i >= 0) boot.rooms[i] = r; else boot.rooms.push(r);
+    ['rmId', 'rmName', 'rmBldg', 'rmFloor', 'rmLat', 'rmLng'].forEach((id) => ($(id).value = '')); $('rmSave').textContent = 'บันทึกห้อง';
+    toast('บันทึกห้องแล้ว'); renderRooms(); if (st) renderSlots();
+  } catch (err) { toast(err.message); }
+};
 </script>
 <div id="appVersion" style="text-align:center;font-size:11.5px;color:#8a9a92;padding:18px 0 28px;font-family:'IBM Plex Mono',monospace"></div>
 <script>window.PWA_OPTS = { isBusy: () => false, installSlot: 'pwaSlot', appName: 'เช็คชื่อ (อาจารย์)' };</script>

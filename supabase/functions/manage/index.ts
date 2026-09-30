@@ -13,9 +13,12 @@
 //   roster_preview { section_id, rows, remove_missing? }   ตรวจไฟล์ก่อนนำเข้า (ไม่บันทึก)
 //   roster_import  { section_id, rows, remove_missing? }   นำเข้าจริง
 //     rows = [{ code, full_name, group? }]  (หน้าเว็บอ่าน Excel/CSV แล้วส่งมาเป็นข้อมูลแถว — ไม่อัปโหลดไฟล์ขึ้นเซิร์ฟเวอร์)
+//   ตั้งค่าเทอมล่วงหน้า (ดู _shared/term-setup.ts):
+//   rooms_save, holidays_get, holidays_save, setup_get, slots_plan, topics_save, topics_copy, session_plan_save, plan_autofill
 
 import { CORS, fail, json, serviceClient } from '../_shared/http.ts';
 import { authStaff, visibleSections, type Staff } from '../_shared/staff-auth.ts';
+import { handleSetup } from '../_shared/term-setup.ts';
 
 const supabase = serviceClient();
 const MAX_ROWS = 1000;
@@ -126,12 +129,13 @@ Deno.serve(async (req: Request) => {
   try {
     switch (body.action) {
       case 'bootstrap': {
-        const [{ data: terms }, { data: depts }, { data: courses }, sections, instr] = await Promise.all([
+        const [{ data: terms }, { data: depts }, { data: courses }, sections, instr, { data: rooms }] = await Promise.all([
           supabase.from('semesters').select('semester_id, academic_year, term, start_date, end_date').order('start_date', { ascending: false }),
           supabase.from('departments').select('department_id, code, name').order('code'),
           supabase.from('courses').select('course_id, course_code, course_name, credit, department_id').order('course_code'),
           visibleSections(supabase, me),
           isAdmin ? supabase.from('users').select('user_id, full_name, role, department_id').in('role', ['instructor', 'admin']).order('full_name') : Promise.resolve({ data: [] }),
+          supabase.from('locations').select('location_id, name, building, floor, latitude, longitude, radius_meters').order('name'),
         ]);
         const count = new Map<string, number>();
         for (const s of sections) count.set(s.semester_id, (count.get(s.semester_id) ?? 0) + 1);
@@ -139,7 +143,7 @@ Deno.serve(async (req: Request) => {
         return json({ data: {
           user: { user_id: me.user_id, full_name: me.full_name, role: me.role, department_id: me.department_id },
           terms: (terms ?? []).map((t) => ({ ...t, label: `${t.term === 'summer' ? 'ภาคฤดูร้อน' : `ภาคเรียนที่ ${t.term}`}/${t.academic_year}`, sections: count.get(t.semester_id) ?? 0 })),
-          departments: depts ?? [], courses: visibleCourses, instructors: (instr as any).data ?? [],
+          departments: depts ?? [], courses: visibleCourses, instructors: (instr as any).data ?? [], rooms: rooms ?? [],
         } });
       }
 
@@ -155,7 +159,25 @@ Deno.serve(async (req: Request) => {
             counts.set(e.section_id, c);
           }
         }
-        return json({ data: { sections: sections.map((s) => ({ ...s, enrolled: counts.get(s.section_id)?.n ?? 0, face_enrolled: counts.get(s.section_id)?.face ?? 0 })) } });
+        // สถานะการตั้งค่า: ช่วงเวลาประจำสัปดาห์ + จำนวนคาบ / คาบที่มีบทแล้ว
+        const slotMap = new Map<string, { weekday: number; start_time: string; end_time: string; room: string }[]>();
+        const sess = new Map<string, { n: number; topic: number }>();
+        const topicN = new Map<string, number>();
+        if (ids.length) {
+          const [{ data: sl }, { data: sc }, { data: tp }] = await Promise.all([
+            supabase.from('section_slots').select('section_id, weekday, start_time, end_time, locations ( name )').in('section_id', ids).order('weekday').order('start_time'),
+            supabase.from('schedules').select('section_id, topic_id').in('section_id', ids).eq('status', 'scheduled').limit(10000),
+            supabase.from('lab_topics').select('course_id').in('course_id', [...new Set(sections.map((s) => s.course_id))]),
+          ]);
+          for (const x of sl ?? []) { const a = slotMap.get(x.section_id) ?? []; a.push({ weekday: x.weekday, start_time: String(x.start_time).slice(0, 5), end_time: String(x.end_time).slice(0, 5), room: (x.locations as any)?.name ?? '' }); slotMap.set(x.section_id, a); }
+          for (const x of sc ?? []) { const c = sess.get(x.section_id) ?? { n: 0, topic: 0 }; c.n++; if (x.topic_id) c.topic++; sess.set(x.section_id, c); }
+          for (const x of tp ?? []) topicN.set(x.course_id, (topicN.get(x.course_id) ?? 0) + 1);
+        }
+        return json({ data: { sections: sections.map((s) => ({
+          ...s, enrolled: counts.get(s.section_id)?.n ?? 0, face_enrolled: counts.get(s.section_id)?.face ?? 0,
+          slots: slotMap.get(s.section_id) ?? [], sessions: sess.get(s.section_id)?.n ?? 0, sessions_with_topic: sess.get(s.section_id)?.topic ?? 0,
+          course_topics: topicN.get(s.course_id) ?? 0,
+        })) } });
       }
 
       case 'term_save': {
@@ -255,8 +277,11 @@ Deno.serve(async (req: Request) => {
         } });
       }
 
-      default:
+      default: {
+        const r = await handleSetup(supabase, me, body);
+        if (r) return r;
         return fail('BAD_REQUEST', 'action ไม่รู้จัก', 400);
+      }
     }
   } catch (err) {
     console.error(err);
