@@ -30,9 +30,15 @@ from public.students s
 where s.student_code between '66010001' and '66010005' or s.student_code like '6602%'
 on conflict (section_id, student_id) do nothing;
 
+-- ห้อง C ใช้พิกัดเดียวกับห้อง A — แยกห้องเพื่อไม่ให้ชนกับ CHM101L (คาบทดสอบทุกชั่วโมงในห้อง A) เมื่อเปิดกฎห้ามจองห้องซ้อน (migration 014)
+insert into public.locations (location_id, name, building, floor, latitude, longitude, radius_meters)
+select 'f0000000-0000-4000-8000-000000000003', 'ห้องทดสอบ C (เคมีอินทรีย์)', building, floor, latitude, longitude, radius_meters
+from public.locations where location_id = 'f0000000-0000-4000-8000-000000000001'
+on conflict (location_id) do nothing;
+
 insert into public.room_bookings (booking_id, location_id, booking_type, section_id, requested_by, purpose,
                                   start_datetime, end_datetime, recurrence_rule, status, approved_by, approved_at) values
-  ('90000000-0000-4000-8000-000000000003', 'f0000000-0000-4000-8000-000000000001', 'class_schedule',
+  ('90000000-0000-4000-8000-000000000003', 'f0000000-0000-4000-8000-000000000003', 'class_schedule',
    'e0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000001', 'ทดสอบระบบ — อ./พฤ. 09:00-12:00',
    '2026-09-29 09:00+07', '2026-09-29 12:00+07', 'TEST: weekly Tue,Thu', 'approved', 'a0000000-0000-4000-8000-000000000001', now()),
   ('90000000-0000-4000-8000-000000000004', 'f0000000-0000-4000-8000-000000000002', 'class_schedule',
@@ -42,7 +48,7 @@ on conflict (booking_id) do nothing;
 
 -- ย้อนหลังตั้งแต่ต้นเดือน ก.ย. เพื่อให้ปฏิทินมีคาบในอดีตด้วย (ไม่มีข้อมูลเช็คชื่อ)
 insert into public.schedules (booking_id, section_id, location_id, class_date, start_time, end_time)
-select '90000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000000003', 'f0000000-0000-4000-8000-000000000001', d::date, time '09:00', time '12:00'
+select '90000000-0000-4000-8000-000000000003', 'e0000000-0000-4000-8000-000000000003', 'f0000000-0000-4000-8000-000000000003', d::date, time '09:00', time '12:00'
 from generate_series(date '2026-09-01', date '2026-10-30', interval '1 day') d
 where extract(isodow from d) in (2, 4)
   and not exists (select 1 from public.schedules x where x.booking_id = '90000000-0000-4000-8000-000000000003' and x.class_date = d::date);
