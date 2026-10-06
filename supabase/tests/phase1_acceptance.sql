@@ -78,10 +78,10 @@ select (select string_agg(status,',') from room_reservations where schedule_id=(
 select booking_request(:SCI, jsonb_build_array(jsonb_build_object('location_id',:A,'kind','prep','course_id','20000000-0000-0000-0000-000000000001',
   'starts_at', bkk_ts(current_date+8,'08:00'),'ends_at',bkk_ts(current_date+8,'09:00')))) -> 'created' -> 0 ->> 'status' as rebook_freed_slot;
 
-\echo '== T9 legacy term-setup insert clashing with approved booking -> blocked'
-\set ON_ERROR_STOP 0
+\echo '== T9 new-term session clashing with a booking -> session saved, no room (shows in dashboard)'
 insert into schedules (section_id,location_id,class_date,start_time,end_time) values ('40000000-0000-0000-0000-000000000002',:B,(select d from day),'14:30','15:00');
-\set ON_ERROR_STOP 1
+select count(*) sessions, count(r.*) reservations from schedules s left join room_reservations r using (schedule_id)
+ where s.class_date=(select d from day) and s.location_id=:B;
 \echo '   non-clashing legacy insert by admin actor -> approved reservation created'
 select set_config('app.actor', '00000000-0000-0000-0000-0000000000a1', false);
 insert into schedules (section_id,location_id,class_date,start_time,end_time) values ('40000000-0000-0000-0000-000000000002',:B,(select d from day)+1,'08:00','09:00');
@@ -106,6 +106,8 @@ select rooms_ok, rooms_pending, topic_ok, roster_ok from schedule_readiness(arra
 select course_code, first_class, request_due, approve_due, sessions, no_request, pending, approved from booking_term_dashboard('30000000-0000-0000-0000-000000000001');
 \echo '== T14 audit rows'
 select table_name, action, count(*) from audit_log group by 1,2 order by 1,2;
-\echo '== T15 past data intact'
+\echo '== T15 past held sessions migrated with actual hours; past cancelled not'
+select s.status, count(r.*) resv, sum(r.actual_hours) hrs from schedules s left join room_reservations r using (schedule_id)
+ where s.class_date < current_date group by 1 order by 1;
 select count(*) past_sched, count(*) filter (where booking_id is not null) with_booking from schedules where class_date < current_date;
 select count(*) attendance from attendance_records;

@@ -111,6 +111,15 @@ create policy "admin full access course_term_settings" on public.course_term_set
 -- ---------- คาบไม่ต้องผูก room_bookings แล้ว ----------
 alter table public.schedules alter column booking_id drop not null;
 
+-- ---------- เหตุผลที่งดคาบ (ใช้ตัดสินว่านับเข้าต้นทุน/ชั่วโมงใช้ห้องหรือไม่) ----------
+-- not_needed  = ไม่ต้องเรียนแล้ว            → ไม่นับ
+-- postponed   = เลื่อน (มีคาบชดเชย)          → นับที่คาบชดเชย ไม่นับคาบนี้ซ้ำ
+-- other_held  = เหตุอื่น แต่เกิดการเรียนจริง  → นับคาบนี้
+alter table public.schedules
+  add column if not exists cancel_reason text check (cancel_reason in ('not_needed', 'postponed', 'other_held')),
+  add column if not exists cancel_note text;
+comment on column public.schedules.cancel_reason is 'เหตุผลที่งด — นับต้นทุนเมื่อ status = scheduled หรือ cancel_reason = other_held';
+
 -- ============================================================
 -- ฟังก์ชัน
 -- ============================================================
@@ -481,9 +490,8 @@ begin
       'location_id', new.location_id, 'kind', coalesce(v_kind, 'class'),
       'starts_at', bkk_ts(new.class_date, new.start_time), 'ends_at', bkk_ts(new.class_date, new.end_time),
       'schedule_id', new.schedule_id, 'section_id', new.section_id), null, null, false);
-  if not (v_res ->> 'ok')::boolean then
-    raise exception 'ROOM_CONFLICT: ห้องไม่ว่าง %', v_res -> 'conflicts' using errcode = '23P01';
-  end if;
+  -- ห้องไม่ว่าง → คาบยังบันทึกได้ (คาบ/บทคงอยู่ทุกเทอม แต่ห้องต้องจองใหม่) · คาบนี้ขึ้นเป็น "ยังไม่มีห้อง"
+  -- ในแดชบอร์ดต้นเทอม/ความพร้อม ให้ผู้ตั้งรายวิชาขอห้องอื่น (rooms_free) หรือเจรจากับผู้จองเดิม
   return new;
 end $$;
 revoke all on function public.sync_schedule_reservation() from public, anon, authenticated;
@@ -556,15 +564,15 @@ begin
 end $$;
 
 -- ============================================================
--- ย้ายข้อมูลเดิม: คาบที่ยังไม่ถึง → การจองอนุมัติแล้ว (ชุดละ 1 room_bookings)
+-- ย้ายข้อมูลเดิม: คาบที่เกิดการเรียน (ผ่านไปแล้ว) และคาบที่ยังไม่ถึง → การจองอนุมัติแล้ว
+-- คาบที่งดไปแล้ว (ข้อมูลเดิมไม่มีเหตุผล) ไม่สร้างการจอง — ภายหลังเจ้าหน้าที่ระบุเหตุผลย้อนหลังได้ ถ้าเป็น other_held จะนับต้นทุน
 -- ============================================================
 insert into public.reservation_series (pattern, rule, kind, section_id, course_id, title, source, legacy_booking_id, requested_by)
 select 'weekly', jsonb_build_object('legacy_recurrence', b.recurrence_rule),
        case when b.booking_type = 'makeup' then 'makeup' else 'class' end,
        b.section_id, ls.course_id, b.purpose, 'migrated', b.booking_id, b.requested_by
 from public.room_bookings b join public.lab_sections ls on ls.section_id = b.section_id
-where exists (select 1 from public.schedules s where s.booking_id = b.booking_id
-              and s.status = 'scheduled' and s.class_date >= (now() at time zone 'Asia/Bangkok')::date);
+where exists (select 1 from public.schedules s where s.booking_id = b.booking_id and s.status = 'scheduled');
 
 insert into public.room_reservations (location_id, kind, status, starts_at, ends_at, block, schedule_id, section_id, course_id,
   requested_by, decided_by, decided_at, decision_note, series_id)
@@ -577,7 +585,11 @@ from public.schedules s
 join public.lab_sections ls on ls.section_id = s.section_id
 left join public.room_bookings b on b.booking_id = s.booking_id
 left join public.reservation_series rs on rs.legacy_booking_id = s.booking_id
-where s.status = 'scheduled' and s.class_date >= (now() at time zone 'Asia/Bangkok')::date;
+where s.status = 'scheduled';
+
+-- ชม.ใช้ห้องจริงของคาบที่ผ่านไปแล้ว = เวลาคาบ (แก้ได้ภายหลัง)
+update public.room_reservations set actual_hours = round(extract(epoch from (ends_at - starts_at)) / 3600.0, 2)
+where schedule_id is not null and ends_at < now() and actual_hours is null;
 
 comment on table public.room_reservations is 'การใช้ห้องทุกประเภท — คาบเรียน/ชดเชย (schedule_id) สร้างผ่านคาบ · อื่นๆ ผ่าน booking_request · ฐานข้อมูลกันจองทับ (room_no_overlap)';
 comment on table public.room_bookings is 'ข้อมูลเก่า (ก่อน 016) — ใช้ reservation_series + room_reservations แทน';
