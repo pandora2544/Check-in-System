@@ -37,15 +37,21 @@ create trigger trg_audit_leave_requests after insert or update or delete on publ
 
 alter table public.leave_requests enable row level security;
 create policy "own leave_requests" on public.leave_requests for select using (student_id = auth.uid());
-create policy "staff read leave_requests" on public.leave_requests for select using (public.is_staff());
+create policy "instructor read leave_requests" on public.leave_requests for select using (
+  exists (select 1 from public.schedules s join public.staff_assignments a on a.section_id = s.section_id and a.kind = 'instructor'
+          where s.schedule_id = leave_requests.schedule_id and a.user_id = auth.uid()));
 create policy "admin full access leave_requests" on public.leave_requests for all using (public.is_admin());
 
--- อนุมัติ → การเข้าเรียน = ลา (บันทึกว่าใครแก้) · ปฏิเสธ → ไม่แตะการเข้าเรียน
+-- อาจารย์ผู้สอนของ Section เป็นผู้อนุมัติ (แอดมินได้เสมอ) · อนุมัติ → การเข้าเรียน = ลา · ปฏิเสธ → ไม่แตะการเข้าเรียน
 create or replace function public.leave_decide(p_actor uuid, p_request uuid, p_approve boolean, p_note text default null)
 returns jsonb language plpgsql set search_path = public as $$
 declare r leave_requests;
 begin
   perform set_config('app.actor', p_actor::text, true);
+  if not exists (select 1 from leave_requests q join schedules s on s.schedule_id = q.schedule_id
+                 where q.request_id = p_request and user_teaches_section(p_actor, s.section_id)) then
+    return jsonb_build_object('ok', false, 'error', 'NOT_INSTRUCTOR');
+  end if;
   update leave_requests set status = case when p_approve then 'approved' else 'rejected' end,
     decided_by = p_actor, decided_at = now(), decision_note = p_note
   where request_id = p_request and status = 'pending' returning * into r;
@@ -70,6 +76,6 @@ alter table public.notification_logs add constraint notification_logs_notificati
     'booking_submitted', 'booking_approved', 'booking_rejected', 'booking_change', 'booking_cancelled',
     'booking_overridden', 'booking_due', 'booking_partial',
     'session_cancelled', 'session_moved', 'task_assigned', 'task_handover', 'task_needs_cover',
-    'leave_submitted', 'leave_decided', 'identity_pending', 'owner_request']));
+    'leave_submitted', 'leave_decided', 'identity_pending', 'owner_request', 'room_move_request', 'room_move_response']));
 alter table public.notification_logs
   add column if not exists reservation_id uuid references public.room_reservations(reservation_id) on delete set null;

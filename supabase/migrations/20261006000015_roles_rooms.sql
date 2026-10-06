@@ -165,3 +165,36 @@ language sql stable set search_path = public as $$
 $$;
 revoke all on function public.active_assignments(uuid, date) from public, anon, authenticated;
 grant execute on function public.active_assignments(uuid, date) to service_role;
+
+-- ---------- ตัวช่วยตรวจสิทธิ์ (ใช้ในฟังก์ชันฐานข้อมูล + Edge Function) ----------
+-- แอดมิน (ผู้พัฒนาระบบ) ทำได้ทุกอย่างเสมอ — ทุกฟังก์ชันด้านล่างคืน true ให้แอดมิน
+create or replace function public.user_is_admin(p_user uuid)
+returns boolean language sql stable set search_path = public as $$
+  select exists (select 1 from users where user_id = p_user and role = 'admin');
+$$;
+
+-- ผู้ตั้งรายวิชา (นักวิทย์ที่รับผิดชอบรายวิชา) ของรายวิชา-เทอม
+create or replace function public.user_owns_course(p_user uuid, p_course uuid, p_semester uuid)
+returns boolean language sql stable set search_path = public as $$
+  select user_is_admin(p_user) or exists (select 1 from staff_assignments a where a.user_id = p_user and a.kind = 'course_owner'
+                                           and a.course_id = p_course and a.semester_id = p_semester);
+$$;
+
+-- อาจารย์ผู้สอนของ Section (นักวิทย์บันทึกให้ตามที่สำนักวิชาแจ้ง)
+create or replace function public.user_teaches_section(p_user uuid, p_section uuid)
+returns boolean language sql stable set search_path = public as $$
+  select user_is_admin(p_user) or exists (select 1 from staff_assignments a where a.user_id = p_user and a.kind = 'instructor'
+                                           and a.section_id = p_section);
+$$;
+
+-- จัดการคาบ (เลื่อน/งด/ชดเชย) = ผู้ตั้งรายวิชาของวิชานั้น
+create or replace function public.user_manages_schedule(p_user uuid, p_schedule uuid)
+returns boolean language sql stable set search_path = public as $$
+  select exists (select 1 from schedules s join lab_sections ls on ls.section_id = s.section_id
+                 where s.schedule_id = p_schedule and user_owns_course(p_user, ls.course_id, ls.semester_id));
+$$;
+
+revoke all on function public.user_is_admin(uuid), public.user_owns_course(uuid, uuid, uuid),
+  public.user_teaches_section(uuid, uuid), public.user_manages_schedule(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.user_is_admin(uuid), public.user_owns_course(uuid, uuid, uuid),
+  public.user_teaches_section(uuid, uuid), public.user_manages_schedule(uuid, uuid) to service_role;

@@ -79,7 +79,7 @@ create index if not exists idx_task_rules_topic on public.topic_task_rules (topi
 -- ---------- ตารางงาน ----------
 create table if not exists public.tasks (
   task_id uuid primary key default gen_random_uuid(),
-  source text not null check (source in ('rule', 'manual', 'general')),   -- จากกฎ / เพิ่มเองในวิชา / งานทั่วไป
+  source text not null check (source in ('rule', 'manual', 'general', 'personal')),   -- จากกฎ (กดสร้างเอง) / เพิ่มในวิชา / งานทั่วไป / งานส่วนตัว
   rule_id uuid references public.topic_task_rules(rule_id) on delete set null,
   schedule_id uuid references public.schedules(schedule_id) on delete cascade,
   course_id uuid references public.courses(course_id) on delete cascade,
@@ -98,10 +98,11 @@ create table if not exists public.tasks (
   done_by uuid references public.users(user_id),
   done_at timestamptz,
   note text,
+  is_private boolean not null default false,       -- true = คนอื่นเห็นแค่ "ไม่ว่าง" ในปฏิทิน
   created_by uuid references public.users(user_id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  check (source = 'general' or course_id is not null)
+  check (source in ('general', 'personal') or course_id is not null)
 );
 create unique index if not exists tasks_rule_schedule_key on public.tasks (rule_id, schedule_id) where rule_id is not null;
 create index if not exists idx_tasks_assignee_date on public.tasks (assignee_id, task_date);
@@ -210,12 +211,22 @@ $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['session_topics', 'topic_task_rules', 'tasks', 'staff_leaves', 'room_items', 'readiness_checks'] loop
+  foreach t in array array['session_topics', 'topic_task_rules', 'staff_leaves', 'room_items', 'readiness_checks'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('create policy "staff read %s" on public.%I for select using (public.is_staff())', t, t);
     execute format('create policy "admin full access %s" on public.%I for all using (public.is_admin())', t, t);
   end loop;
 end $$;
+-- ตารางงาน: เจ้าของจัดการเอง · คนอื่นเห็นงานที่ไม่ส่วนตัว (เลือกแสดงในปฏิทินได้) · แอดมินเห็นทั้งหมด
+alter table public.tasks enable row level security;
+create policy "own tasks" on public.tasks for select using (assignee_id = auth.uid() or created_by = auth.uid());
+create policy "staff read shared tasks" on public.tasks for select using (public.is_staff() and not is_private);
+create policy "admin full access tasks" on public.tasks for all using (public.is_admin());
+
+-- ปฏิทินของฉัน (คล้าย Google Calendar): ค่าเริ่ม = เห็นเฉพาะของตัวเอง · เลือกซ้อนของคนอื่น/ห้อง/วิชาได้
+alter table public.users add column if not exists calendar_settings jsonb not null default '{"show": "mine"}'::jsonb;
+comment on column public.users.calendar_settings is '{"show":"mine"|"selected"|"all", "people":[user_id], "rooms":[location_id], "courses":[course_id], "layers":["sessions","tasks","bookings","holidays","leaves"]}';
+
 -- นักศึกษาเห็นบทของคาบตัวเอง (หน้าเช็คชื่อแสดง "ปฏิบัติการที่ 1+2")
 create policy "student read own session_topics" on public.session_topics for select using (
   exists (select 1 from public.schedules s join public.section_enrollments e on e.section_id = s.section_id

@@ -367,6 +367,14 @@ begin
   return jsonb_build_object('done', v_done, 'skipped', v_skip);
 end $$;
 
+-- ผู้ขอใช้เป็นผู้ย้าย/ยกเลิกการจองของตน (คาบเรียน = ผู้ตั้งรายวิชา) · แอดมินทำได้เสมอ
+-- เจ้าของห้องยกเลิก/ย้ายการจองที่อนุมัติแล้วของคนอื่นไม่ได้ — ต้องส่ง "ขอให้ย้าย" แล้วเจรจา (room_move_requests)
+create or replace function public.user_controls_reservation(p_user uuid, p_res public.room_reservations)
+returns boolean language sql stable set search_path = public as $$
+  select user_is_admin(p_user) or p_res.requested_by = p_user
+      or (p_res.schedule_id is not null and user_manages_schedule(p_user, p_res.schedule_id));
+$$;
+
 -- ย้าย/แก้เวลา (3.3 ข้อ 6 · 1.4A) — การจองเดิมคงอยู่จนอนุมัติ
 create or replace function public.booking_change(p_actor uuid, p_id uuid, p_location uuid, p_starts timestamptz, p_ends timestamptz,
   p_setup int default null, p_teardown int default null, p_note text default null)
@@ -385,6 +393,9 @@ begin
   select * into r from room_reservations where reservation_id = p_id for update;
   if not found or r.status not in ('pending', 'approved') then
     return jsonb_build_object('ok', false, 'error', 'NOT_ACTIVE');
+  end if;
+  if not user_controls_reservation(p_actor, r) then
+    return jsonb_build_object('ok', false, 'error', 'NOT_REQUESTER');
   end if;
   if p_ends <= p_starts then return jsonb_build_object('ok', false, 'error', 'BAD_TIME'); end if;
   v_setup := coalesce(p_setup, r.setup_minutes);
@@ -443,12 +454,67 @@ begin
     update room_reservations set status = 'cancelled', pending_change = null, decided_by = p_actor, decided_at = now(),
       decision_note = coalesce(p_note, 'ผู้ขอยกเลิก')
     where reservation_id = any (p_ids) and status in ('pending', 'approved')
+      and user_controls_reservation(p_actor, room_reservations)
     returning reservation_id
   ) select array_agg(reservation_id) into v_ids from u;
   -- คำขอย้ายที่ค้างอยู่ของรายการที่ยกเลิก ก็ยกเลิกตาม
   update room_reservations set status = 'cancelled', decision_note = 'รายการเดิมถูกยกเลิก'
   where replaces_id = any (coalesce(v_ids, '{}')) and status = 'pending';
   return jsonb_build_object('cancelled', coalesce(to_jsonb(v_ids), '[]'::jsonb));
+end $$;
+
+-- ---------- เจ้าของห้องขอให้ย้าย (กรณีจำเป็น/ฉุกเฉิน) — ไม่บังคับ ผู้ขอใช้ตัดสินเอง ----------
+create table if not exists public.room_move_requests (
+  move_request_id uuid primary key default gen_random_uuid(),
+  reservation_id uuid not null references public.room_reservations(reservation_id) on delete cascade,
+  requested_by uuid not null references public.users(user_id),          -- ผู้ดูแลห้อง/แอดมิน
+  reason text not null,
+  urgent boolean not null default false,
+  suggestion jsonb,                                                    -- ห้อง/เวลาที่เสนอ {location_id, starts_at, ends_at}
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined', 'withdrawn')),
+  responded_by uuid references public.users(user_id),
+  responded_at timestamptz,
+  response_note text,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists room_move_requests_one_pending on public.room_move_requests (reservation_id) where status = 'pending';
+alter table public.room_move_requests enable row level security;
+create policy "staff read room_move_requests" on public.room_move_requests for select using (public.is_staff());
+create policy "admin full access room_move_requests" on public.room_move_requests for all using (public.is_admin());
+create trigger trg_audit_room_move_requests after insert or update or delete on public.room_move_requests
+  for each row execute function public.audit_row('move_request_id');
+
+create or replace function public.room_move_request(p_actor uuid, p_reservation uuid, p_reason text, p_urgent boolean default false, p_suggestion jsonb default null)
+returns jsonb language plpgsql set search_path = public as $$
+declare r room_reservations; v_id uuid;
+begin
+  perform set_config('app.actor', p_actor::text, true);
+  select * into r from room_reservations where reservation_id = p_reservation and status in ('pending', 'approved');
+  if not found then return jsonb_build_object('ok', false, 'error', 'NOT_ACTIVE'); end if;
+  if not room_can_approve(p_actor, r.location_id, bkk_date(r.starts_at)) then
+    return jsonb_build_object('ok', false, 'error', 'NOT_ROOM_OWNER');
+  end if;
+  insert into room_move_requests (reservation_id, requested_by, reason, urgent, suggestion)
+  values (r.reservation_id, p_actor, p_reason, p_urgent, p_suggestion) returning move_request_id into v_id;
+  return jsonb_build_object('ok', true, 'move_request_id', v_id, 'notify', r.requested_by);
+exception when unique_violation then
+  return jsonb_build_object('ok', false, 'error', 'ALREADY_REQUESTED');
+end $$;
+
+-- ผู้ขอใช้ตอบรับ/ปฏิเสธ · ตอบรับแล้วผู้ขอใช้ย้าย/ยกเลิกเองด้วย booking_change / booking_cancel
+create or replace function public.room_move_respond(p_actor uuid, p_move_request uuid, p_accept boolean, p_note text default null)
+returns jsonb language plpgsql set search_path = public as $$
+declare m room_move_requests; r room_reservations;
+begin
+  perform set_config('app.actor', p_actor::text, true);
+  select * into m from room_move_requests where move_request_id = p_move_request and status = 'pending' for update;
+  if not found then return jsonb_build_object('ok', false, 'error', 'NOT_PENDING'); end if;
+  select * into r from room_reservations where reservation_id = m.reservation_id;
+  if not user_controls_reservation(p_actor, r) then return jsonb_build_object('ok', false, 'error', 'NOT_REQUESTER'); end if;
+  update room_move_requests set status = case when p_accept then 'accepted' else 'declined' end,
+    responded_by = p_actor, responded_at = now(), response_note = p_note
+  where move_request_id = m.move_request_id;
+  return jsonb_build_object('ok', true, 'notify', m.requested_by);
 end $$;
 
 -- ---------- คาบ → การจอง (ทางเดิมของโค้ดตั้งค่าเทอม + งดคาบ 1.4C) ----------
@@ -555,6 +621,8 @@ begin
     'public.booking_request(uuid, jsonb, jsonb, boolean)', 'public.booking_decide(uuid, uuid[], boolean, text)',
     'public.booking_change(uuid, uuid, uuid, timestamptz, timestamptz, int, int, text)',
     'public.booking_cancel(uuid, uuid[], text)', 'public.booking_term_dashboard(uuid)',
+    'public.user_controls_reservation(uuid, public.room_reservations)',
+    'public.room_move_request(uuid, uuid, text, boolean, jsonb)', 'public.room_move_respond(uuid, uuid, boolean, text)',
     'public.rooms_free(timestamptz, timestamptz, uuid)',
     'public.room_reservations_block()']
   loop

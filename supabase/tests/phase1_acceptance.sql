@@ -46,27 +46,40 @@ create temp table c1 as select r.*, s.start_time st from room_reservations r joi
 select booking_change(:ADMIN, (select reservation_id from c1), :A, (select starts_at from c1)+interval '30 min', (select ends_at from c1)+interval '30 min') ->> 'mode' as mode;
 select start_time,end_time from schedules where schedule_id=(select schedule_id from c1);
 \echo '   shift 14:00 slot by 30 min would hit 14:00-15:00? (14:30-15:30 vs 15:30-16:30 moved) -> 14:00 slot overlaps none? expect conflict with nothing'
-\echo '== T6b instructor (not approver) shifts 30 min -> pending_change, row unchanged'
+\echo '== T6b course owner (not room approver) shifts 30 min -> pending_change, row unchanged'
 create temp table c2 as select r.* from room_reservations r join schedules s using (schedule_id)
   where s.class_date=current_date+6 and s.start_time='15:00' and s.section_id='40000000-0000-0000-0000-000000000001';
-select booking_change(:INST, (select reservation_id from c2), :A, (select starts_at from c2)+interval '30 min', (select ends_at from c2)+interval '30 min') ->> 'mode' as mode;
+select booking_change(:SCI, (select reservation_id from c2), :A, (select starts_at from c2)+interval '30 min', (select ends_at from c2)+interval '30 min') ->> 'mode' as mode;
 select status, pending_change is not null has_change, (starts_at at time zone 'Asia/Bangkok')::time from room_reservations where reservation_id=(select reservation_id from c2);
 \echo '   admin approves change -> schedule moves'
 select booking_decide(:ADMIN, array[(select reservation_id from c2)], true) -> 'done' ->0->>'reservation_id' is not null ok;
 select start_time,end_time from schedules where schedule_id=(select schedule_id from c2);
 
-\echo '== T7 move class to room B (instructor) -> replacement pending; manager rejects -> original stays'
+\echo '== T7 move class to room B (course owner) -> replacement pending; manager rejects -> original stays'
 create temp table c3 as select r.* from room_reservations r join schedules s using (schedule_id)
   where s.class_date=current_date+3 and s.start_time='10:00' and s.section_id='40000000-0000-0000-0000-000000000001';
-create temp table ch as select booking_change(:INST, (select reservation_id from c3), :B, (select starts_at from c3), (select ends_at from c3)) x;
+create temp table ch as select booking_change(:SCI, (select reservation_id from c3), :B, (select starts_at from c3), (select ends_at from c3)) x;
 select x->>'mode' mode, x->>'status' status from ch;
 select booking_decide(:MGR, array[(x->>'reservation_id')::uuid], false, 'ไม่ว่าง') ->'done' is not null from ch;
 select r.status, l.name, s.location_id = r.location_id same_loc from room_reservations r join schedules s using (schedule_id) join locations l on l.location_id=r.location_id where r.reservation_id=(select reservation_id from c3);
 \echo '   move again, manager approves -> original cancelled, schedule now in B'
-create temp table ch2 as select booking_change(:INST, (select reservation_id from c3), :B, (select starts_at from c3), (select ends_at from c3)) x;
+create temp table ch2 as select booking_change(:SCI, (select reservation_id from c3), :B, (select starts_at from c3), (select ends_at from c3)) x;
 select booking_decide(:MGR, array[(x->>'reservation_id')::uuid], true) -> 'skipped' skipped from ch2;
 select (select status from room_reservations where reservation_id=(select reservation_id from c3)) old_status,
        (select l.name from schedules s join locations l using (location_id) where s.schedule_id=(select schedule_id from c3)) sched_room;
+
+\echo '== T7b instructor (not course owner) cannot move a class booking'
+select booking_change(:INST, (select reservation_id from c1), :A, (select starts_at from c1)+interval '1 day', (select ends_at from c1)+interval '1 day') ->> 'error' err;
+
+\echo '== T7c room owner cannot cancel an approved booking of someone else; can only ask to move'
+create temp table tb as select (booking_request(:INST, jsonb_build_array(jsonb_build_object('location_id',:B,'kind','prep','course_id','20000000-0000-0000-0000-000000000001',
+  'starts_at', bkk_ts((select d from day)+2,'13:00'),'ends_at',bkk_ts((select d from day)+2,'15:00')))) -> 'created' -> 0 ->> 'reservation_id')::uuid id;
+select booking_decide(:MGR, array[(select id from tb)], true) -> 'done' -> 0 ->> 'reservation_id' is not null approved;
+select booking_cancel(:MGR, array[(select id from tb)]) -> 'cancelled' mgr_cancel_result;
+select room_move_request(:MGR, (select id from tb), 'ท่อน้ำแตก ต้องซ่อม', true) ->> 'ok' move_req;
+select room_move_respond(:MGR, (select move_request_id from room_move_requests limit 1), true) ->> 'error' mgr_cannot_answer;
+select room_move_respond(:INST, (select move_request_id from room_move_requests limit 1), true) ->> 'ok' inst_accepts;
+select booking_cancel(:INST, array[(select id from tb)]) -> 'cancelled' -> 0 is not null inst_cancel_ok;
 
 \echo '== T8 cancel schedule -> room free immediately; tasks cancelled'
 insert into topic_task_rules (topic_id,task_type,offset_days,duration_hours) values ('60000000-0000-0000-0000-000000000001','prep',-1,2);
@@ -96,14 +109,24 @@ select task_date - (select class_date from c5) offset_before from tasks where sc
 insert into session_topics (schedule_id, topic_id, seq) select schedule_id,'60000000-0000-0000-0000-000000000002',0 from c5;
 select t.title_th from schedules s join lab_topics t using (topic_id) where s.schedule_id=(select schedule_id from c5);
 
-\echo '== T12 leave request approved -> excused'
+\echo '== T12 leave: scientist (not instructor) cannot approve; instructor approves -> excused'
 insert into leave_requests (schedule_id,student_id,submitted_via,requested_by,reason) select schedule_id,'00000000-0000-0000-0000-0000000000c1','student','00000000-0000-0000-0000-0000000000c1','ป่วย' from c5 returning request_id \gset
+select leave_decide(:SCI, :'request_id', true) ->> 'error' sci;
 select leave_decide(:INST, :'request_id', true) ->> 'status';
 select status, is_manual from attendance_records where schedule_id=(select schedule_id from c5);
 
 \echo '== T13 readiness + dashboard'
 select rooms_ok, rooms_pending, topic_ok, roster_ok from schedule_readiness(array(select schedule_id from c5));
 select course_code, first_class, request_due, approve_due, sessions, no_request, pending, approved from booking_term_dashboard('30000000-0000-0000-0000-000000000001');
+\echo '== T13b private task: owner sees, colleague sees only shared'
+insert into tasks (source,task_type,title,assignee_id,task_date,created_by,is_private) values
+ ('personal','other','ส่วนตัว',:INST,current_date,:INST,true),('general','other','ตรวจนับคลัง',:INST,current_date,:INST,false);
+set role authenticated;
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b2',false);
+select count(*) inst_sees from tasks where source in ('personal','general');
+select set_config('request.jwt.claim.sub','00000000-0000-0000-0000-0000000000b1',false);
+select count(*) sci_sees from tasks where source in ('personal','general');
+reset role;
 \echo '== T14 audit rows'
 select table_name, action, count(*) from audit_log group by 1,2 order by 1,2;
 \echo '== T15 past held sessions migrated with actual hours; past cancelled not'
