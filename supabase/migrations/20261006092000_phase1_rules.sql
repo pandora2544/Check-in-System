@@ -1,3 +1,4 @@
+-- ลงแล้ว 6 ต.ค. 2569 เป็น 3 ส่วน: phase1_rules_part1_roles · phase1_rules_part2_booking_fns · phase1_rules_part3_sessions_tasks_leave
 -- ระยะ 1 · กติกาสิทธิ์ระยะ 1 (ตกลงกับผู้ใช้ 6 ต.ค. 2569 15:14–15:36) — ต่อจาก 20261006062435_booking_functions ที่ลงแล้ว
 -- • ผู้ขอใช้เป็นผู้ยกเลิก/ย้ายการจองของตน · เจ้าของห้องอนุมัติ/ปฏิเสธ และ "ขอให้ย้าย" ได้ แต่บังคับยกเลิก/ย้ายไม่ได้
 -- • รายวิชามีผู้ประสานหลัก (course_owner) + ผู้ประสานรอง (course_backup): หลักอยู่ → หลัก · หลักไม่อยู่ → รอง · ไม่อยู่ทั้งคู่ → ติดต่อด่วนทั้งคู่
@@ -20,20 +21,6 @@ where status = 'approved' and ends_at < now() and used_hours is null;
 -- ============================================================
 -- บันทึกการแก้ไข
 -- ============================================================
-create table if not exists public.audit_log (
-  audit_id bigint generated always as identity primary key,
-  table_name text not null,
-  row_id text not null,
-  action text not null check (action in ('insert', 'update', 'delete')),
-  actor uuid,
-  before jsonb,
-  after jsonb,
-  at timestamptz not null default now()
-);
-create index if not exists idx_audit_row on public.audit_log (table_name, row_id, at desc);
-create index if not exists idx_audit_actor on public.audit_log (actor, at desc);
-alter table public.audit_log enable row level security;
-create policy "admin read audit_log" on public.audit_log for select using (public.is_admin());
 
 -- ผู้ทำ: Edge Function ตั้ง set_config('app.actor', <user_id>, true) · ฟังก์ชันที่รับ p_by ตั้งให้เอง
 create or replace function public.audit_row()
@@ -84,23 +71,8 @@ create trigger trg_audit_room_reservations after insert or update or delete on p
 -- ============================================================
 -- ผู้ประสานรายวิชา หลัก/รอง
 -- ============================================================
-alter table public.staff_assignments drop constraint staff_assignments_kind_check;
-alter table public.staff_assignments add constraint staff_assignments_kind_check check (kind in (
-  'course_owner',    -- ผู้ประสานรายวิชาหลัก (นักวิทย์)
-  'course_backup',   -- ผู้ประสานรายวิชารอง
-  'instructor', 'lab_staff', 'lab_worker', 'room_manager', 'room_backup', 'room_delegate', 'cost_viewer'));
-alter table public.staff_assignments drop constraint staff_assignments_check1;
-alter table public.staff_assignments add constraint staff_assignments_scope_check check (
-  (kind in ('course_owner', 'course_backup', 'lab_staff', 'lab_worker') and course_id is not null and semester_id is not null) or
-  (kind = 'instructor' and section_id is not null) or
-  (kind in ('room_manager', 'room_backup') and location_id is not null) or
-  (kind = 'room_delegate' and location_id is not null and valid_from is not null and valid_to is not null) or
-  (kind = 'cost_viewer'));
 -- ผู้ประสานรายวิชาต้องเป็นนักวิทย์ผู้รับผิดชอบ (อาจารย์ = สอน · พนักงานห้องทดลอง/แล็บบอย = จัดแล็บ จัดของ)
 -- migration 20261006061209 ตั้งอาจารย์ผู้สอนเป็นผู้ตั้งรายวิชาอัตโนมัติ → ลบออก (นักวิทย์บันทึกผู้ประสานเอง)
-delete from public.staff_assignments a
- using public.users u
- where a.kind = 'course_owner' and u.user_id = a.user_id and not u.is_scientist and u.role <> 'admin';
 
 create or replace function public.check_coordinator_is_scientist()
 returns trigger language plpgsql set search_path = public as $$
@@ -246,7 +218,6 @@ end $$;
 -- คาบ: เหตุผลงด · ชม.ใช้ห้องของคาบที่ผ่านแล้ว
 -- ============================================================
 -- not_needed = ไม่ต้องเรียนแล้ว (ไม่นับ) · postponed = เลื่อน (นับที่คาบชดเชย) · other_held = เหตุอื่นแต่เกิดการเรียน (นับคาบนี้)
-alter table public.schedules alter column booking_id drop not null;   -- คาบไม่ต้องผูก room_bookings เดิมแล้ว
 alter table public.schedules
   add column if not exists cancel_reason text check (cancel_reason in ('not_needed', 'postponed', 'other_held')),
   add column if not exists cancel_note text;
@@ -442,18 +413,6 @@ end $$;
 create trigger trg_session_topics_first after insert or update or delete on public.session_topics
   for each row execute function public.sync_first_topic();
 
-create or replace function public.sync_topic_to_session()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  if pg_trigger_depth() > 1 then return new; end if;
-  delete from session_topics where schedule_id = new.schedule_id;
-  if new.topic_id is not null then insert into session_topics (schedule_id, topic_id, seq) values (new.schedule_id, new.topic_id, 1); end if;
-  return new;
-end $$;
-create trigger trg_schedule_topic_legacy after update of topic_id on public.schedules
-  for each row when (old.topic_id is distinct from new.topic_id) execute function public.sync_topic_to_session();
-create trigger trg_schedule_topic_insert after insert on public.schedules
-  for each row when (new.topic_id is not null) execute function public.sync_topic_to_session();
 
 -- ============================================================
 -- สิ่งที่ต้องเตรียมต่อบท (นักวิทย์ตั้งเอง) + ตารางงาน (ผู้ใช้สร้าง/แก้เอง)
@@ -652,14 +611,6 @@ begin
   return jsonb_build_object('ok', true, 'status', r.status, 'student_id', r.student_id);
 end $$;
 
-alter table public.notification_logs drop constraint notification_logs_notification_type_check;
-alter table public.notification_logs add constraint notification_logs_notification_type_check
-  check (notification_type = any (array[
-    'mid_class_15min', 'end_of_class', 'auto_absent', 'roster_ready', 'class_reminder',
-    'booking_submitted', 'booking_approved', 'booking_rejected', 'booking_change', 'booking_cancelled', 'booking_overridden',
-    'booking_due', 'booking_partial', 'room_move_request', 'room_move_response',
-    'session_cancelled', 'session_moved', 'task_assigned', 'task_handover', 'task_needs_cover',
-    'leave_submitted', 'leave_decided', 'identity_pending', 'owner_request', 'urgent_contact']));
 alter table public.notification_logs add column if not exists reservation_id uuid references public.room_reservations(reservation_id) on delete set null;
 
 -- ============================================================
@@ -699,7 +650,7 @@ begin
     'public.room_move_request(uuid, uuid, text, boolean, jsonb)', 'public.room_move_respond(uuid, uuid, boolean, text)',
     'public.rooms_free(timestamptz, timestamptz, uuid)', 'public.booking_term_dashboard(uuid)',
     'public.generate_rule_tasks(uuid[], uuid)', 'public.schedule_readiness(uuid[])', 'public.leave_decide(uuid, uuid, boolean, text)',
-    'public.sync_first_topic()', 'public.sync_topic_to_session()', 'public.sync_schedule_tasks()']
+    'public.sync_first_topic()', 'public.sync_schedule_tasks()']
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
     if f not like '%sync_%' then execute format('grant execute on function %s to service_role', f); end if;
