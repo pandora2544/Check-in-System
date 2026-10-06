@@ -1,8 +1,8 @@
 {
   "id": "/staff",
-  "name": "CPH Smart Check-in — หน้าอาจารย์",
-  "short_name": "เช็คชื่อ (อาจารย์)",
-  "description": "ปฏิทินแล็บ ดูการเข้าเรียนสด เช็คชื่อแทน ใบเซ็นชื่อ",
+  "name": "CSE-SMART-LAB — บุคลากร",
+  "short_name": "LAB บุคลากร",
+  "description": "ปฏิทินของฉัน จองห้อง ตารางงาน อนุมัติ และเช็คชื่อ",
   "lang": "th",
   "start_url": "/staff?source=pwa",
   "scope": "/staff",

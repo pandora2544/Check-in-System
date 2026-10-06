@@ -1,5 +1,5 @@
 /*
- * Service worker — CPH Smart Check-in
+ * Service worker — CSE-SMART-LAB (ชื่อ cache cph-* คงไว้เพื่อไม่ให้เครื่องที่ติดตั้งแล้วโหลดใหม่ทั้งหมด)
  * เวอร์ชันถูกแทนตอน build บน Vercel (build.sh) → ไฟล์นี้เปลี่ยนทุก deploy → เบราว์เซอร์รู้ว่ามีตัวใหม่
  *
  * กลยุทธ์
@@ -16,7 +16,7 @@ const CDN = 'cph-cdn-v1'; // ไม่ผูกเวอร์ชันแอป
 
 const PRECACHE = [
   '/', '/staff', '/manifest.webmanifest', '/staff.webmanifest',
-  '/lib/pwa.js', '/lib/xlsx-lite.js',
+  '/lib/pwa.js', '/lib/xlsx-lite.js', '/lib/work.js', '/lib/work.css',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon-32.png',
 ];
 const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];

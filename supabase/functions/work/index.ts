@@ -17,6 +17,7 @@
 //   session_cancel   { schedule_id, reason: not_needed|other_held, note? }   ผู้ประสานรายวิชา
 //   session_postpone { schedule_id, date, start_time, end_time, location_id?, note? }
 //   session_restore  { schedule_id }
+//   session_set_room { schedule_id, location_id }   เปลี่ยนห้อง/ขอห้องใหม่ให้คาบ (ห้องชน → ไม่เปลี่ยน)
 //   inbox                                 ตัวเลขรออนุมัติ/รอตอบ/งานวันนี้ (ป้ายบนเมนู)
 // deno-lint-ignore-file no-explicit-any
 import { bkkDate, CORS, fail, json, serviceClient } from '../_shared/http.ts';
@@ -45,6 +46,7 @@ const RESULT_TH: Record<string, string> = {
   forbidden: 'ไม่มีสิทธิ์แก้งานนี้', no_title: 'ใส่ชื่องาน', no_date: 'ใส่วันที่', no_semester: 'ระบุเทอมของวิชา',
   not_in_course: 'สร้างงานของวิชาได้เฉพาะผู้ที่มีหน้าที่ในวิชานั้น', bad_status: 'สถานะไม่ถูกต้อง',
   not_instructor: 'อนุมัติได้เฉพาะอาจารย์ผู้สอนกลุ่มเรียนนั้น', not_pending: 'คำขอนี้ตัดสินไปแล้ว',
+  conflict: 'ห้องนี้ไม่ว่างช่วงเวลาของคาบ — เลือกห้องอื่น',
 };
 const why = (r: any) => RESULT_TH[r?.result] ?? `ทำไม่สำเร็จ (${r?.result ?? 'unknown'})`;
 
@@ -549,6 +551,15 @@ Deno.serve(async (req: Request) => {
         const { data: res, error } = await sb.rpc('session_restore', { p_by: uid, p_schedule: String(body.schedule_id ?? '') });
         if (error) throw error;
         if (!res?.ok) return fail(res?.result === 'not_coordinator' ? 'FORBIDDEN' : 'BAD_REQUEST', why(res), res?.result === 'not_coordinator' ? 403 : 400);
+        return json({ data: res });
+      }
+
+      case 'session_set_room': {
+        const loc = String(body.location_id ?? '');
+        if (!UUID.test(loc)) return fail('BAD_REQUEST', 'เลือกห้อง', 400);
+        const { data: res, error } = await sb.rpc('session_set_room', { p_by: uid, p_schedule: String(body.schedule_id ?? ''), p_location: loc });
+        if (error) throw error;
+        if (!res?.ok) return fail(res?.result === 'not_coordinator' ? 'FORBIDDEN' : res?.result === 'conflict' ? 'ROOM_CONFLICT' : 'BAD_REQUEST', why(res), res?.result === 'not_coordinator' ? 403 : res?.result === 'conflict' ? 409 : 400);
         return json({ data: res });
       }
 

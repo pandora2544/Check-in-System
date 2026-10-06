@@ -54,3 +54,14 @@ select title, handed_over_from = :INST handed_over, assignee_id = :BAK to_bak fr
 select task_write(:INST, 'remove', (select id from tk limit 1), '{}') ->> 'result' other_cannot_remove_private;
 select task_write(:MGR, 'remove', (select id from tk limit 1), '{}') ->> 'removed' owner_remove;
 select count(*) audit_rows_with_actor from audit_log where table_name = 'tasks' and actor is not null;
+
+\echo '== W5 เปลี่ยนห้องของคาบ: ห้องว่าง → ขอห้องใหม่ (pending) · ห้องชน → conflict ไม่เปลี่ยน · คนนอกทำไม่ได้'
+create temp table s5 as select s.schedule_id id, s.location_id loc, s.class_date d, s.start_time st, s.end_time en from schedules s join lab_sections ls using (section_id)
+  where ls.course_id = :C1 and s.status = 'scheduled' and s.class_date > current_date + 3 order by class_date limit 1;
+select session_set_room(:INST, (select id from s5), :B) ->> 'result' inst;
+select (session_set_room(:SCI, (select id from s5), :B)) ->> 'has_room' moved_to_b;
+select l.name, r.status from room_reservations r join locations l using (location_id) where r.schedule_id = (select id from s5) and r.status in ('pending','approved');
+insert into room_reservations (location_id, kind, status, starts_at, ends_at, requested_by)
+  select '10000000-0000-0000-0000-00000000000a', 'prep', 'approved', (d + st) at time zone 'Asia/Bangkok', (d + en) at time zone 'Asia/Bangkok', :ADMIN from s5;
+select session_set_room(:SCI, (select id from s5), '10000000-0000-0000-0000-00000000000a') ->> 'result' to_busy_room;
+select location_id = :B still_b from schedules where schedule_id = (select id from s5);

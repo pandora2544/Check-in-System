@@ -9,16 +9,17 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="เช็คชื่อ (อาจารย์)">
+<meta name="apple-mobile-web-app-title" content="CSE-SMART-LAB">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#294F40">
-<title>CPH Check-in — อาจารย์</title>
+<title>CSE-SMART-LAB — บุคลากร</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="lib/xlsx-lite.js"></script>
 <script src="lib/xlsx-read.js"></script>
 <script src="lib/roster-import.js"></script>
+<link rel="stylesheet" href="lib/work.css">
 <style>
   :root{
     --paper:#EFF2EF; --surface:#FBFCFA; --ink:#173029; --ink-muted:#587067; --line:#D8DED9;
@@ -219,14 +220,19 @@
 <div class="wrap">
   <header>
     <div>
-      <h1>เช็คชื่อ — หน้าอาจารย์</h1>
-      <div class="muted">ปฏิทินแล็บ · ดูการเข้าเรียนสด · เช็คชื่อแทน · ใบเซ็นชื่อ · แจ้งเตือน Telegram</div>
+      <h1>CSE-SMART-LAB · บุคลากร</h1>
+      <div class="muted">ปฏิทินของฉัน · ห้อง · งาน · อนุมัติ · เช็คชื่อ</div>
     </div>
     <div class="who" id="who"></div>
   </header>
   <div id="pwaSlot"></div>
   <nav class="nav" id="mainNav" hidden>
-    <a href="#cal" data-nav="cal">📅 ปฏิทินแล็บ</a>
+    <a href="#my" data-nav="my">🗓️ ปฏิทินของฉัน</a>
+    <a href="#rooms" data-nav="rooms">🏫 ห้อง</a>
+    <a href="#tasks" data-nav="tasks">✅ งาน<span class="nb" data-nb="tasks"></span></a>
+    <a href="#inbox" data-nav="inbox">📥 รออนุมัติ<span class="nb" data-nb="inbox"></span></a>
+    <span class="sep"></span>
+    <a href="#cal" data-nav="cal">📅 เช็คชื่อรายวัน</a>
     <a href="#setup" data-nav="setup">⚙️ ตั้งค่าเทอม</a>
     <a href="#roster" data-nav="roster">👥 รายชื่อนักศึกษา</a>
   </nav>
@@ -377,6 +383,12 @@
     <div class="err" id="setupErr"></div>
   </section>
 
+  <!-- ระยะ 1: ปฏิทินของฉัน · ห้อง · งาน · รออนุมัติ (lib/work.js) -->
+  <section id="viewMy" hidden></section>
+  <section id="viewRooms" hidden></section>
+  <section id="viewTasks" hidden></section>
+  <section id="viewInbox" hidden></section>
+
   <!-- คาบทั้งหมดของวัน -->
   <section id="viewDay" hidden>
     <div class="dayhead">
@@ -499,18 +511,20 @@ async function staffApi(action, extra = {}, fn = 'staff') {
   } catch { throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — เช็คอินเทอร์เน็ต'); }
   const json = await res.json().catch(() => ({}));
   if (res.status === 401) { await sb.auth.signOut(); showLogin(json.error?.message); throw new Error(json.error?.message || 'กรุณาเข้าสู่ระบบ'); }
-  if (!res.ok) throw new Error(json.error?.message || 'เกิดข้อผิดพลาด');
+  if (!res.ok) { const e = new Error(json.error?.message || 'เกิดข้อผิดพลาด'); e.detail = json.error; e.status = res.status; throw e; }
   return json.data;
 }
 
 function show(view) {
-  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup'].forEach((v) => ($(v).hidden = v !== view));
+  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup', 'viewMy', 'viewRooms', 'viewTasks', 'viewInbox'].forEach((v) => ($(v).hidden = v !== view));
   $('mainNav').hidden = view === 'viewLogin';
-  const nav = view === 'viewRoster' ? 'roster' : view === 'viewSetup' ? 'setup' : 'cal';
+  const NAV = { viewRoster: 'roster', viewSetup: 'setup', viewMy: 'my', viewRooms: 'rooms', viewTasks: 'tasks', viewInbox: 'inbox' };
+  const nav = NAV[view] || 'cal';
+  document.body.classList.toggle('wide', view === 'viewMy' || view === 'viewRooms');
   $('mainNav').querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.nav === nav));
   window.scrollTo(0, 0);
 }
-function showLogin(msg) { me = null; $('who').innerHTML = ''; show('viewLogin'); $('loginErr').textContent = msg || ''; stopRefresh(); }
+function showLogin(msg) { me = null; window.W?.reset(); $('who').innerHTML = ''; show('viewLogin'); $('loginErr').textContent = msg || ''; stopRefresh(); }
 
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -528,8 +542,12 @@ async function start() {
     const d = await staffApi('me');
     me = d.user; mySections = d.sections || []; departments = d.departments || [];
     const dept = me.department ? ` · ${esc(me.department.name)}` : '';
-    $('who').innerHTML = `<b>${esc(me.full_name)}</b><br>${me.role === 'admin' ? 'ผู้ดูแลระบบ' : 'อาจารย์'}${dept} · <a href="#" id="logout">ออกจากระบบ</a>`;
-    $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); location.hash = ''; showLogin(); });
+    const who = () => `<b>${esc(me.full_name)}</b><br>${esc(W.data()?.me.position || (me.role === 'admin' ? 'ผู้ดูแลระบบ' : 'บุคลากร'))}${dept} · <a href="#" id="logout">ออกจากระบบ</a>`;
+    $('who').innerHTML = who();
+    W.init().then(() => { if (me) { $('who').innerHTML = who(); bindLogout(); } }).catch(() => {});
+    W.start();
+    const bindLogout = () => $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); location.hash = ''; showLogin(); });
+    bindLogout();
     // ตัวกรองสาขา: แอดมินเลือกได้ทุกสาขา · บุคลากรเห็นเฉพาะสาขาตัวเอง (+ วิชาที่ตัวเองสอน)
     if (departments.length > 1) {
       $('deptSel').innerHTML = `<option value="">ทุกสาขา</option>` + departments.map((x) => `<option value="${esc(x.department_id)}">${esc(x.name)}</option>`).join('');
@@ -555,6 +573,11 @@ function route() {
   if (kind === 'roster') return openRoster(arg || null);
   if (kind === 'setup') return openSetup(arg || null, location.hash.split('/')[2] || null);
   if (kind === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '')) return openDay(arg);
+  const third = location.hash.split('/')[2] || null;
+  if (kind === 'my' || kind === '') return W.openMy(arg || null, third);
+  if (kind === 'rooms') return W.openRooms(arg || 'board', third);
+  if (kind === 'tasks') return W.openTasks();
+  if (kind === 'inbox') return W.openInbox();
   return openCal(/^\d{4}-\d{2}$/.test(arg || '') ? arg : bkkToday().slice(0, 7));
 }
 
@@ -1069,7 +1092,7 @@ function buildSignSheet(d) {
   sign(`( ${me?.role === 'instructor' ? me.full_name : dots} )`, `( ${dots} )`);
   sign('อาจารย์ผู้สอน', 'ผู้ตรวจสอบ (นักวิทยาศาสตร์)');
   rows.push({ h: 12, cells: [] });
-  full(`เวลาเข้า/ออกมาจากการสแกนใบหน้าในระบบ CPH Smart Check-in · ✎ = อาจารย์บันทึกแทน · พิมพ์เมื่อ ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' })} น.`,
+  full(`เวลาเข้า/ออกมาจากการสแกนใบหน้าในระบบ CSE-SMART-LAB · ✎ = อาจารย์บันทึกแทน · พิมพ์เมื่อ ${new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' })} น.`,
     { font: { sz: 12, i: true, color: '666666' }, h: 'left', wrap: true }, 20);
 
   const blob = XlsxLite.build([{
@@ -1746,7 +1769,8 @@ $('rmSave').onclick = async () => {
 };
 </script>
 <div id="appVersion" style="text-align:center;font-size:11.5px;color:#8a9a92;padding:18px 0 28px;font-family:'IBM Plex Mono',monospace"></div>
-<script>window.PWA_OPTS = { isBusy: () => false, installSlot: 'pwaSlot', appName: 'เช็คชื่อ (อาจารย์)' };</script>
+<script src="lib/work.js"></script>
+<script>window.PWA_OPTS = { isBusy: () => false, installSlot: 'pwaSlot', appName: 'CSE-SMART-LAB (บุคลากร)' };</script>
 <script src="/lib/pwa.js"></script>
 </body>
 </html>

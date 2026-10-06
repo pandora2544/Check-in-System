@@ -97,7 +97,7 @@
   const DISMISS_KEY = 'cph_pwa_install_dismissed';
   const dismissedRecently = () => Number(ls.get(DISMISS_KEY) || 0) > Date.now() - 14 * 86400e3;
   let deferred = null, card = null;
-  const appName = opts.appName || 'CPH Smart Check-in';
+  const appName = opts.appName || 'CSE-SMART-LAB';
 
   function slot() { return opts.installSlot ? document.getElementById(opts.installSlot) : null; }
   function showInstallCard(onInstall) {

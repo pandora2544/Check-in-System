@@ -7,4 +7,4 @@ V="$(date -u +%Y%m%d%H%M)-$SHA"
 for f in index.html staff.html sw.js version.json; do
   sed -i "s/__APP_VERSION__/$V/g" "$f"
 done
-echo "CPH Smart Check-in version $V"
+echo "CSE-SMART-LAB version $V"
