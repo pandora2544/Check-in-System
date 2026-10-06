@@ -144,15 +144,20 @@ export async function approverIndex(sb: any, locIds: string[]): Promise<Approver
   const { data: as } = ids.length
     ? await sb.from('staff_assignments').select('user_id, kind, location_id, valid_from, valid_to').in('location_id', ids).in('kind', ['room_manager', 'room_backup', 'room_delegate'])
     : { data: [] };
-  const mgrIds = [...new Set((as ?? []).filter((a: any) => a.kind === 'room_manager').map((a: any) => a.user_id))];
+  const mgrIds = [...new Set((as ?? []).filter((a: any) => a.kind === 'room_manager' || a.kind === 'room_backup').map((a: any) => a.user_id))];
   const { data: aw } = mgrIds.length ? await sb.from('user_away').select('user_id, from_date, to_date').in('user_id', mgrIds) : { data: [] };
   const away = (u: string, d: string) => (aw ?? []).some((x: any) => x.user_id === u && x.from_date <= d && x.to_date >= d);
   const who = (loc: string, d: string) => {
     const rows = (as ?? []).filter((a: any) => a.location_id === loc);
     const mgr = rows.find((a: any) => a.kind === 'room_manager');
     const list: string[] = [];
+    const backups = rows.filter((a: any) => a.kind === 'room_backup');
     if (mgr && !away(mgr.user_id, d)) list.push(mgr.user_id);
-    else for (const b of rows.filter((a: any) => a.kind === 'room_backup')) list.push(b.user_id);
+    else {
+      for (const b of backups) list.push(b.user_id);
+      // หลักและสำรองไม่อยู่ทั้งคู่ → ติดต่อด่วนทั้งคู่ (ยังอนุมัติได้)
+      if (mgr && !backups.some((b: any) => !away(b.user_id, d))) list.push(mgr.user_id);
+    }
     for (const x of rows.filter((a: any) => a.kind === 'room_delegate' && a.valid_from <= d && a.valid_to >= d)) list.push(x.user_id);
     return list;
   };

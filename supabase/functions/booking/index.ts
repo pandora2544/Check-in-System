@@ -10,8 +10,11 @@
 //   request_create  { ...preview, kind, dates?, course_id?, semester_id?, project_name?, title?, purpose?, actual_user?, override?, override_note? }
 //     pattern: {type:'once',date} | {type:'range',from,to,skip_weekend?} | {type:'weekly',from,weekdays:[1-7],every?,until?|count?} | {type:'dates',dates:[]}
 //   decide        { reservation_ids? | series_id?, approve, note? }
-//   change        { reservation_id, location_id?, starts_at, ends_at, setup_minutes?, teardown_minutes? }
-//   cancel        { reservation_id, scope?: this|following|all, note? }
+//   change        { reservation_id, location_id?, starts_at, ends_at, setup_minutes?, teardown_minutes? }   เฉพาะผู้ขอใช้/แอดมิน
+//   cancel        { reservation_id, scope?: this|following|all, note? }                                เฉพาะผู้ขอใช้/แอดมิน
+//   move_request  { reservation_id, reason, urgent?, suggestion? }   เจ้าของห้องขอให้ย้าย (ไม่บังคับ — ผู้ขอใช้ตัดสิน)
+//   move_respond  { move_request_id, accept, note? }                 ผู้ขอใช้ตอบรับ/ปฏิเสธ แล้วย้าย/ยกเลิกเอง
+//   move_list     {}                                                 คำขอให้ย้ายที่เกี่ยวกับฉัน (ส่งไป/ได้รับ)
 //   queue         {}                                       คำขอที่ฉันอนุมัติได้ (แอดมิน = ทั้งหมด)
 //   mine          {}                                       คำขอของฉัน (อนาคต)
 //   dashboard     { semester_id? }                         การจองต้นเทอมรายวิชา (B6)
@@ -301,8 +304,8 @@ Deno.serve(async (req: Request) => {
         if (!['pending', 'approved'].includes(cur.status)) return fail('BAD_REQUEST', 'รายการนี้ไม่ได้ใช้งานแล้ว', 400);
         const locId = String(body.location_id || cur.location_id);
         const idxAll = await approverIndex([cur.location_id, locId]);
-        const mineOrRight = isAdmin || cur.requested_by === me.user_id || idxAll.can(me.user_id, cur.location_id, cur.date);
-        if (!mineOrRight) return fail('FORBIDDEN', 'แก้ได้เฉพาะผู้ขอ ผู้ดูแลห้อง หรือแอดมิน', 403);
+        // ผู้ขอใช้เป็นผู้ย้ายเอง · เจ้าของห้องใช้ "ขอให้ย้าย" (move_request) เพราะเคยอนุมัติแล้ว
+        if (!(isAdmin || cur.requested_by === me.user_id)) return fail('FORBIDDEN', 'ย้ายได้เฉพาะผู้ขอใช้ — เจ้าของห้องส่ง "ขอให้ย้าย" แทน', 403);
         const s = String(body.starts_at ?? ''), e = String(body.ends_at ?? '');
         if (isNaN(Date.parse(s)) || isNaN(Date.parse(e)) || Date.parse(e) <= Date.parse(s)) return fail('BAD_REQUEST', 'เวลาไม่ถูกต้อง', 400);
         if (isPast(s)) return fail('BAD_REQUEST', 'ย้ายไปเวลาที่ผ่านมาแล้วไม่ได้', 400);
@@ -316,6 +319,7 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         if (!res?.ok) {
           if (res?.result === 'conflict') return fail('ROOM_CONFLICT', 'ช่วงเวลานี้มีการจองอยู่แล้ว', 409, await withContacts(res.conflicts ?? [], [locId]));
+          if (res?.result === 'not_requester') return fail('FORBIDDEN', 'ย้ายได้เฉพาะผู้ขอใช้', 403);
           return fail('BAD_REQUEST', `แก้ไม่ได้ (${res?.result})`, 400);
         }
         if (!auto) {
@@ -330,8 +334,7 @@ Deno.serve(async (req: Request) => {
         const [cur] = await details([String(body.reservation_id ?? '')]);
         if (!cur) return fail('NOT_FOUND', 'ไม่พบการจอง', 404);
         if (CLASS_KINDS.includes(cur.kind)) return fail('USE_SESSION_CHANGE', 'คาบเรียน/ชดเชย งดผ่านหน้าคาบ', 400);
-        const idx = await approverIndex([cur.location_id]);
-        if (!(isAdmin || cur.requested_by === me.user_id || idx.can(me.user_id, cur.location_id, cur.date))) return fail('FORBIDDEN', 'ยกเลิกได้เฉพาะผู้ขอ ผู้ดูแลห้อง หรือแอดมิน', 403);
+        if (!(isAdmin || cur.requested_by === me.user_id)) return fail('FORBIDDEN', 'ยกเลิกได้เฉพาะผู้ขอใช้ — เจ้าของห้องส่ง "ขอให้ย้าย" แทน', 403);
         const scope = ['this', 'following', 'all'].includes(body.scope) ? body.scope : 'this';
         let ids = [cur.reservation_id];
         if (scope !== 'this' && cur.series_id) {
@@ -441,6 +444,52 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await sb.from('course_term_settings').upsert(row, { onConflict: 'course_id,semester_id' }).select().single();
         if (error) throw error;
         return json({ data });
+      }
+
+      // ---------------- เจ้าของห้องขอให้ย้าย (กรณีจำเป็น/ฉุกเฉิน) ----------------
+      case 'move_request': {
+        const [cur] = await details([String(body.reservation_id ?? '')]);
+        if (!cur) return fail('NOT_FOUND', 'ไม่พบการจอง', 404);
+        const reason = String(body.reason ?? '').trim().slice(0, 500);
+        if (!reason) return fail('BAD_REQUEST', 'ระบุเหตุผลที่ขอให้ย้าย', 400);
+        const sug = body.suggestion && typeof body.suggestion === 'object' ? {
+          location_id: body.suggestion.location_id ? String(body.suggestion.location_id) : null,
+          starts_at: body.suggestion.starts_at ? String(body.suggestion.starts_at) : null,
+          ends_at: body.suggestion.ends_at ? String(body.suggestion.ends_at) : null,
+        } : null;
+        const { data: res, error } = await sb.rpc('room_move_request', { p_by: me.user_id, p_reservation: cur.reservation_id, p_reason: reason, p_urgent: body.urgent === true, p_suggestion: sug });
+        if (error) throw error;
+        if (!res?.ok) {
+          if (res?.result === 'not_room_owner') return fail('FORBIDDEN', 'ขอให้ย้ายได้เฉพาะผู้ดูแลห้องนี้', 403);
+          if (res?.result === 'already_requested') return fail('CONFLICT', 'มีคำขอให้ย้ายที่ยังไม่ได้ตอบอยู่แล้ว', 409);
+          return fail('BAD_REQUEST', `ส่งไม่ได้ (${res?.result})`, 400);
+        }
+        // แจ้งผู้ขอใช้ (คาบเรียน: ผู้ประสานรายวิชาตามกติกาหลัก/รอง)
+        let to = [cur.requested_by];
+        if (CLASS_KINDS.includes(cur.kind) && res.course_id) {
+          const { data: co } = await sb.rpc('course_coordinators', { p_course: res.course_id, p_semester: res.semester_id });
+          if (co?.length) to = co.map((c: any) => c.user_id);
+        }
+        await notifyUsers(to, `${body.urgent === true ? '🚨 <b>ด่วน</b> ' : '🙏 '}<b>ผู้ดูแลห้อง ${esc(cur.room)} ขอให้ย้ายการจอง</b>\n${esc(thDay(cur.date))} ${esc(cur.start)}–${esc(cur.end)}\nเหตุผล: ${esc(reason)}\nโดย ${esc(me.full_name)} — กรุณาตอบรับหรือปฏิเสธในระบบ`);
+        return json({ data: res });
+      }
+      case 'move_respond': {
+        const accept = body.accept === true;
+        const { data: res, error } = await sb.rpc('room_move_respond', { p_by: me.user_id, p_move_request: String(body.move_request_id ?? ''), p_accept: accept, p_note: String(body.note ?? '').slice(0, 300) || null });
+        if (error) throw error;
+        if (!res?.ok) return fail(res?.result === 'not_requester' ? 'FORBIDDEN' : 'BAD_REQUEST', res?.result === 'not_requester' ? 'ตอบได้เฉพาะผู้ขอใช้' : 'คำขอนี้ตอบไปแล้ว', res?.result === 'not_requester' ? 403 : 400);
+        await notifyUsers([res.notify], `${accept ? '👍 ผู้ขอใช้ยินดีย้าย' : '🙅 ผู้ขอใช้ยังไม่สะดวกย้าย'} — ${esc(me.full_name)}${body.note ? '\n' + esc(String(body.note).slice(0, 300)) : ''}`);
+        return json({ data: res });
+      }
+      case 'move_list': {
+        const { data: sent } = await sb.from('room_move_requests').select('*').eq('requested_by', me.user_id).order('created_at', { ascending: false }).limit(100);
+        const { data: mineResv } = await sb.from('room_reservations').select('reservation_id').eq('requested_by', me.user_id).in('status', ['pending', 'approved']).gte('ends_at', new Date().toISOString());
+        const ids = (mineResv ?? []).map((r: any) => r.reservation_id);
+        const { data: got } = ids.length ? await sb.from('room_move_requests').select('*').in('reservation_id', ids).order('created_at', { ascending: false }) : { data: [] };
+        const all = [...(sent ?? []), ...(got ?? [])];
+        const det = new Map((await details([...new Set(all.map((m: any) => m.reservation_id))])).map((d: any) => [d.reservation_id, d]));
+        const add = (m: any) => ({ ...m, reservation: det.get(m.reservation_id) ?? null });
+        return json({ data: { sent: (sent ?? []).map(add), received: (got ?? []).map(add) } });
       }
 
       // ---------------- สถานะไม่อยู่ของผู้ดูแลห้อง ----------------
