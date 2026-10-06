@@ -64,7 +64,7 @@ async function sectionAccess(me: Staff, sectionId: string) {
 
 async function scheduleAccess(me: Staff, scheduleId: string) {
   const { data: sc } = await supabase.from('schedules')
-    .select('schedule_id, section_id, class_date, start_time, end_time, status, note, locations ( name ), lab_sections ( late_threshold_minutes ), lab_topics ( seq, title_th, title_en )')
+    .select('schedule_id, section_id, class_date, start_time, end_time, status, note, locations ( name ), lab_sections ( late_threshold_minutes ), lab_topics!schedules_topic_id_fkey ( seq, title_th, title_en )')
     .eq('schedule_id', scheduleId).maybeSingle();
   if (!sc) return null;
   const sec = await sectionAccess(me, sc.section_id);

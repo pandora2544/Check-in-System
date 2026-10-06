@@ -33,7 +33,7 @@ export async function tgSend(chatId: string, html: string) {
 
 async function loadSchedule(sb: SB, scheduleId: string) {
   const { data: sc } = await sb.from('schedules')
-    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( section_no, late_threshold_minutes, auto_absent, courses ( course_code, course_name ) ), lab_topics ( seq, title_th )')
+    .select('schedule_id, section_id, class_date, start_time, end_time, status, locations ( name ), lab_sections ( section_no, late_threshold_minutes, auto_absent, courses ( course_code, course_name ) ), lab_topics!schedules_topic_id_fkey ( seq, title_th )')
     .eq('schedule_id', scheduleId).maybeSingle();
   return sc;
 }
