@@ -10,7 +10,12 @@
 \set C1 '''20000000-0000-0000-0000-000000000001'''
 \set SEM '''30000000-0000-0000-0000-000000000001'''
 -- seed roles: room B manager/backup; CHM101L primary = SCI (replace auto owner INST), backup = BAK
-delete from staff_assignments where kind='course_owner' and course_id=:C1;
+\echo '== R0 auto owners from instructors removed; non-scientist cannot be coordinator'
+select count(*) owners_left from staff_assignments where kind='course_owner';
+\set ON_ERROR_STOP 0
+insert into staff_assignments (user_id,kind,course_id,semester_id) values (:INST,'course_owner',:C1,:SEM);
+\set ON_ERROR_STOP 1
+update users set is_scientist = true where user_id in (:SCI, :BAK);
 insert into staff_assignments (user_id,kind,location_id) values (:MGR,'room_manager',:B),(:BAK,'room_backup',:B);
 insert into staff_assignments (user_id,kind,course_id,semester_id) values (:SCI,'course_owner',:C1,:SEM),(:BAK,'course_backup',:C1,:SEM);
 create function pg_temp.bkk_ts(d date, t time) returns timestamptz language sql as $$ select (d + t) at time zone 'Asia/Bangkok' $$;

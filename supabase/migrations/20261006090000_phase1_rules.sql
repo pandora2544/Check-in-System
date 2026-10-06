@@ -3,6 +3,7 @@
 -- • รายวิชามีผู้ประสานหลัก (course_owner) + ผู้ประสานรอง (course_backup): หลักอยู่ → หลัก · หลักไม่อยู่ → รอง · ไม่อยู่ทั้งคู่ → ติดต่อด่วนทั้งคู่
 -- • ห้องใช้กติกาเดียวกัน (ผู้ดูแลหลัก/สำรอง ไม่อยู่ทั้งคู่ → ติดต่อด่วนทั้งคู่)
 -- • บันทึกการแก้ไข (ใคร เมื่อไร ค่าก่อน/หลัง) · เหตุผลงดคาบ · ชม.ใช้ห้องของคาบที่ผ่านแล้ว · สร้างคาบไม่ล้มเมื่อห้องชน
+-- • ผู้ประสานรายวิชาต้องเป็นนักวิทย์ · อาจารย์ = สอน (อนุมัติคำขอลา) · แล็บบอย = จัดแล็บ จัดของ
 -- • แอดมิน (ผู้พัฒนาระบบ) ทำได้ทุกอย่าง
 
 create or replace function public.is_staff()
@@ -95,6 +96,26 @@ alter table public.staff_assignments add constraint staff_assignments_scope_chec
   (kind in ('room_manager', 'room_backup') and location_id is not null) or
   (kind = 'room_delegate' and location_id is not null and valid_from is not null and valid_to is not null) or
   (kind = 'cost_viewer'));
+-- ผู้ประสานรายวิชาต้องเป็นนักวิทย์ผู้รับผิดชอบ (อาจารย์ = สอน · พนักงานห้องทดลอง/แล็บบอย = จัดแล็บ จัดของ)
+-- migration 20261006061209 ตั้งอาจารย์ผู้สอนเป็นผู้ตั้งรายวิชาอัตโนมัติ → ลบออก (นักวิทย์บันทึกผู้ประสานเอง)
+delete from public.staff_assignments a
+ using public.users u
+ where a.kind = 'course_owner' and u.user_id = a.user_id and not u.is_scientist and u.role <> 'admin';
+
+create or replace function public.check_coordinator_is_scientist()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.kind in ('course_owner', 'course_backup')
+     and not exists (select 1 from users where user_id = new.user_id and (is_scientist or role = 'admin')) then
+    raise exception 'COORDINATOR_NOT_SCIENTIST: ผู้ประสานรายวิชาต้องเป็นนักวิทยาศาสตร์' using errcode = '23514';
+  end if;
+  return new;
+end $$;
+create trigger trg_coordinator_is_scientist before insert or update of kind, user_id on public.staff_assignments
+  for each row execute function public.check_coordinator_is_scientist();
+revoke all on function public.check_coordinator_is_scientist() from public, anon, authenticated;
+comment on column public.staff_assignments.kind is 'course_owner/course_backup = นักวิทย์ผู้ประสานหลัก/รอง · instructor = อาจารย์ผู้สอน (สอน) · lab_staff = เจ้าหน้าที่เตรียมแล็บ · lab_worker = พนักงานห้องทดลอง/แล็บบอย (จัดแล็บ จัดของ)';
+
 create unique index if not exists uq_course_primary on public.staff_assignments (course_id, semester_id) where kind = 'course_owner';
 create unique index if not exists uq_course_backup on public.staff_assignments (course_id, semester_id) where kind = 'course_backup';
 
@@ -275,6 +296,8 @@ begin
   end if;
 
   select ls.course_id, ls.semester_id, ls.instructor_id into v_course, v_sem, v_req from lab_sections ls where ls.section_id = new.section_id;
+  -- ผู้ขอห้องของคาบ = นักวิทย์ผู้ประสานหลัก (ถ้ามี) · ไม่มี → อาจารย์ผู้สอน → แอดมิน
+  v_req := coalesce((select a.user_id from staff_assignments a where a.kind = 'course_owner' and a.course_id = v_course and a.semester_id = v_sem limit 1), v_req);
   if v_req is null then select user_id into v_req from users where role = 'admin' order by created_at limit 1; end if;
   select setup_minutes, teardown_minutes into v_setup, v_tear from locations where location_id = new.location_id;
   -- ห้องชน → คาบยังบันทึกได้ (คาบ/บทคงอยู่ทุกเทอม แต่ห้องต้องจองใหม่) · คาบขึ้นเป็น "ยังไม่มีห้อง" ในแดชบอร์ด/ความพร้อม
