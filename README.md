@@ -1,4 +1,4 @@
-# Check-in System — ระบบเช็คชื่อเข้าเรียนแล็บ
+# CSE-SMART-LAB — ระบบเช็คชื่อเข้าเรียนแล็บและบริหารงานแล็บ
 
 สแกนใบหน้า (Human library, ประมวลผลในเบราว์เซอร์) + ตรวจตำแหน่ง GPS/QR ต่อห้อง
 
@@ -13,7 +13,7 @@
 | `supabase/migrations/` | SQL schema ตามลำดับที่รันจริงบนโปรเจกต์ |
 | `supabase/functions/` | Edge Functions (verify_jwt: false): `session` หาคาบที่กำลังเรียน, `enroll` ลงทะเบียนใบหน้า, `checkin` เช็คชื่อ, `dev-tools` เครื่องมือทดสอบ |
 | `supabase/seed/` | ข้อมูลจำลองสำหรับทดสอบ + สคริปต์ลบ |
-| `web/` | หน้าเว็บเช็คชื่อ (ต่อ Supabase จริง) — Vercel deploy จากโฟลเดอร์นี้ → https://cph-smart-checkin.vercel.app |
+| `web/` | หน้าเว็บเช็คชื่อ (ต่อ Supabase จริง) — Vercel deploy จากโฟลเดอร์นี้ → https://cse-smart-lab.vercel.app (โดเมนเดิม cph-smart-checkin.vercel.app ยังใช้ได้) |
 | `docs/` | เอกสารออกแบบ, API spec, mockup, Context.md |
 
 ## ห้าม commit
