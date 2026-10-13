@@ -351,8 +351,8 @@ body.wide .wrap{ max-width:1240px; }
 .bk-links{ display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; justify-content:space-between; margin-top:10px; font-size:13px; }
 .bk-list{ flex:1 1 260px; }
 .bk-list summary{ cursor:pointer; font-weight:600; }
-.bk-list .li{ font-size:12.5px; padding:5px 0; border-top:1px solid var(--line); }
-.bk-list .li:first-of-type{ margin-top:6px; }
+.bk-li{ font-size:12.5px; padding:5px 0; border-top:1px solid var(--line); }
+.bk-li:first-of-type{ margin-top:6px; }
 .bk-h{ font-size:14.5px; margin:16px 0 6px; }
 .bk-sum{ background:#EEF0F6; border-radius:10px; padding:9px 12px; font-size:13.5px; margin-top:10px; line-height:1.75; }
 .bk-sum b{ font-family:'IBM Plex Mono',monospace; }
