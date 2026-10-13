@@ -31,7 +31,7 @@
   *{ box-sizing:border-box; }
   html,body{ margin:0; }
   body{ background:var(--paper); font-family:'IBM Plex Sans Thai',sans-serif; color:var(--ink); padding:0 16px 60px; }
-  .wrap{ max-width:880px; margin:0 auto; }
+  .wrap{ max-width:1180px; margin:0 auto; }
   header{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 0 12px; }
   header h1{ font-size:18px; margin:0; }
   header .who{ font-size:12.5px; color:var(--ink-muted); text-align:right; }
@@ -221,21 +221,23 @@
   <header>
     <div>
       <h1>CSE-SMART-LAB · บุคลากร</h1>
-      <div class="muted">ปฏิทินของฉัน · ห้อง · งาน · อนุมัติ · เช็คชื่อ</div>
+      <div class="muted">ระบบเช็คชื่อเข้าเรียนแล็บและบริหารงานแล็บ</div>
     </div>
     <div class="who" id="who"></div>
   </header>
   <div id="pwaSlot"></div>
+  <div class="shell" id="shell">
+  <!-- เมนูหลัก 6 ระบบ (plan 8.5) — จอกว้างเป็นแถบซ้าย · มือถือเป็นแถบเลื่อนด้านบน -->
   <nav class="nav" id="mainNav" hidden>
-    <a href="#my" data-nav="my">🗓️ ปฏิทินของฉัน</a>
-    <a href="#rooms" data-nav="rooms">🏫 ห้อง</a>
-    <a href="#tasks" data-nav="tasks">✅ งาน<span class="nb" data-nb="tasks"></span></a>
-    <a href="#inbox" data-nav="inbox">📥 รออนุมัติ<span class="nb" data-nb="inbox"></span></a>
-    <span class="sep"></span>
-    <a href="#cal" data-nav="cal">📅 เช็คชื่อรายวัน</a>
-    <a href="#setup" data-nav="setup">⚙️ ตั้งค่าเทอม</a>
-    <a href="#roster" data-nav="roster">👥 รายชื่อนักศึกษา</a>
+    <a href="#my" data-menu="work"><i>🗓️</i><span>ตารางงาน</span><span class="nb" data-nb="tasks"></span></a>
+    <a href="#rooms" data-menu="rooms"><i>🏫</i><span>จองห้องแลป</span><span class="nb" data-nb="inbox"></span></a>
+    <a href="#cal" data-menu="check"><i>✅</i><span>ตรวจการเช็กชื่อเข้าแลป</span></a>
+    <a href="#stock" data-menu="stock"><i>📦</i><span>คลังวัสดุสิ้นเปลือง-ครุภัณฑ์</span><small>เร็วๆ นี้</small></a>
+    <a href="#sheet" data-menu="sheet"><i>🧪</i><span>ออกใบงานแลป</span><small>เร็วๆ นี้</small></a>
+    <a href="#cost" data-menu="cost"><i>💰</i><span>สรุปต้นทุน</span><small>เร็วๆ นี้</small></a>
   </nav>
+  <div class="main">
+  <div class="subtabs" id="subTabs" hidden></div>
 
   <!-- ล็อกอิน -->
   <section id="viewLogin" hidden>
@@ -463,6 +465,18 @@
       <div class="err" id="sessErr"></div>
     </div>
   </section>
+
+  <!-- ระบบที่ยังไม่เปิดใช้ -->
+  <section id="viewSoon" hidden>
+    <div class="card soon">
+      <div class="soon-ic" id="soonIc"></div>
+      <h2 id="soonTitle"></h2>
+      <p class="muted" id="soonText"></p>
+      <span class="soon-tag">เร็วๆ นี้</span>
+    </div>
+  </section>
+  </div><!-- /.main -->
+  </div><!-- /.shell -->
 </div>
 <div class="modal" id="upModal" hidden>
   <div class="box" role="dialog" aria-modal="true" aria-labelledby="upTitle">
@@ -515,13 +529,58 @@ async function staffApi(action, extra = {}, fn = 'staff') {
   return json.data;
 }
 
+// ---- เมนูหลัก 6 ระบบ + แท็บย่อย ----
+// แท็บ: [รหัส, ชื่อ, ลิงก์, ป้ายตัวเลข] · ลิงก์เดิม (#my #rooms #tasks #inbox #cal #setup #roster) ยังใช้ได้ทั้งหมด
+const MENUS = {
+  work: [['my', '🗓️ ปฏิทิน', '#my'], ['tasks', '✅ งานของฉัน', '#tasks', 'tasks'], ['workload', '⏱️ ภาระงาน', '#workload'], ['setup', '⚙️ ตั้งค่าเทอม', '#setup']],
+  rooms: [['board', '🗓️ ตารางห้อง', '#rooms/board'], ['mine', '📋 การจองของฉัน', '#rooms/mine'], ['inbox', '📥 รออนุมัติ', '#inbox', 'inbox'], ['moves', '🙏 คำขอย้าย', '#rooms/moves', 'mv'], ['term', '📊 ห้องต้นเทอม', '#rooms/term'], ['away', '🙈 วันไม่อยู่', '#rooms/away']],
+  check: [['cal', '📅 เช็คชื่อรายวัน', '#cal'], ['roster', '👥 รายชื่อนักศึกษา', '#roster']],
+};
+const SOON = {
+  workload: ['⏱️', 'ภาระงาน', 'วางแผนและบันทึกภาระงานตาม Agreement / Achievement แล้วดูผลบนปฏิทินตารางงาน'],
+  stock: ['📦', 'คลังวัสดุสิ้นเปลือง-ครุภัณฑ์', 'ทะเบียนวัสดุและครุภัณฑ์ ที่เก็บ รหัสตู้ และการเบิก-ยืม-คืน'],
+  sheet: ['🧪', 'ออกใบงานแลป', 'ออกใบงานจากหัวข้อแลปของแต่ละคาบ พร้อมรายการวัสดุที่ต้องเตรียม'],
+  cost: ['💰', 'สรุปต้นทุน', 'สรุปต้นทุนวัสดุและเวลาต่อรายวิชา ต่อคาบ และต่อนักศึกษา'],
+};
+// ระบุเมนู/แท็บที่กำลังเปิดจาก hash
+function whereAmI() {
+  const [kind, arg] = location.hash.replace(/^#/, '').split('/');
+  if (kind === '' || kind === 'my') return ['work', 'my'];
+  if (kind === 'tasks' || kind === 'setup' || kind === 'workload') return ['work', kind];
+  if (kind === 'rooms') return ['rooms', MENUS.rooms.some((t) => t[0] === arg) ? arg : 'board'];
+  if (kind === 'inbox') return ['rooms', 'inbox'];
+  if (kind === 'roster') return ['check', 'roster'];
+  if (kind === 'stock' || kind === 'sheet' || kind === 'cost') return [kind, null];
+  return ['check', 'cal']; // #cal #day #s
+}
+function syncNav() {
+  const [menu, tab] = whereAmI();
+  $('mainNav').querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.menu === menu));
+  const tabs = MENUS[menu];
+  const st = $('subTabs');
+  st.hidden = !tabs;
+  if (!tabs) return;
+  if (st.dataset.menu !== menu) {
+    st.dataset.menu = menu;
+    st.innerHTML = tabs.map(([k, t, href, nb]) => `<button data-t="${k}" data-href="${href}">${t}${nb ? `<span class="nb" data-nb="${nb}"></span>` : ''}</button>`).join('');
+    st.querySelectorAll('button').forEach((b) => (b.onclick = () => go(b.dataset.href)));
+    window.W?.refreshBadges?.();
+  }
+  st.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.t === tab));
+}
+function openSoon(key) {
+  const [ic, title, text] = SOON[key];
+  $('soonIc').textContent = ic; $('soonTitle').textContent = title; $('soonText').textContent = text;
+  show('viewSoon');
+}
+
 function show(view) {
-  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup', 'viewMy', 'viewRooms', 'viewTasks', 'viewInbox'].forEach((v) => ($(v).hidden = v !== view));
-  $('mainNav').hidden = view === 'viewLogin';
-  const NAV = { viewRoster: 'roster', viewSetup: 'setup', viewMy: 'my', viewRooms: 'rooms', viewTasks: 'tasks', viewInbox: 'inbox' };
-  const nav = NAV[view] || 'cal';
+  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup', 'viewMy', 'viewRooms', 'viewTasks', 'viewInbox', 'viewSoon'].forEach((v) => ($(v).hidden = v !== view));
+  const out = view === 'viewLogin';
+  $('mainNav').hidden = out;
+  $('shell').classList.toggle('out', out);
   document.body.classList.toggle('wide', view === 'viewMy' || view === 'viewRooms');
-  $('mainNav').querySelectorAll('a').forEach((a) => a.classList.toggle('on', a.dataset.nav === nav));
+  if (out) $('subTabs').hidden = true; else syncNav();
   window.scrollTo(0, 0);
 }
 function showLogin(msg) { me = null; window.W?.reset(); $('who').innerHTML = ''; show('viewLogin'); $('loginErr').textContent = msg || ''; stopRefresh(); }
@@ -578,6 +637,7 @@ function route() {
   if (kind === 'rooms') return W.openRooms(arg || 'board', third);
   if (kind === 'tasks') return W.openTasks();
   if (kind === 'inbox') return W.openInbox();
+  if (SOON[kind]) return openSoon(kind);
   return openCal(/^\d{4}-\d{2}$/.test(arg || '') ? arg : bkkToday().slice(0, 7));
 }
 
