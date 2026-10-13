@@ -230,8 +230,8 @@
   <!-- เมนูหลัก 6 ระบบ (plan 8.5) — จอกว้างเป็นแถบซ้าย · มือถือเป็นแถบเลื่อนด้านบน -->
   <nav class="nav" id="mainNav" hidden>
     <a href="#my" data-menu="work"><i>🗓️</i><span>ตารางงาน</span><span class="nb" data-nb="tasks"></span></a>
-    <a href="#rooms" data-menu="rooms"><i>🏫</i><span>จองห้องแลป</span><span class="nb" data-nb="inbox"></span></a>
-    <a href="#cal" data-menu="check"><i>✅</i><span>ตรวจการเช็กชื่อเข้าแลป</span></a>
+    <a href="#rooms" data-menu="rooms"><i>🏫</i><span>จองห้องแลป</span><span class="nb" data-nb="rooms"></span></a>
+    <a href="#cal" data-menu="check"><i>✅</i><span>ตรวจการเช็กชื่อเข้าแลป</span><span class="nb" data-nb="lv"></span></a>
     <a href="#stock" data-menu="stock"><i>📦</i><span>คลังวัสดุสิ้นเปลือง-ครุภัณฑ์</span><small>เร็วๆ นี้</small></a>
     <a href="#sheet" data-menu="sheet"><i>🧪</i><span>ออกใบงานแลป</span><small>เร็วๆ นี้</small></a>
     <a href="#cost" data-menu="cost"><i>💰</i><span>สรุปต้นทุน</span><small>เร็วๆ นี้</small></a>
@@ -530,11 +530,11 @@ async function staffApi(action, extra = {}, fn = 'staff') {
 }
 
 // ---- เมนูหลัก 6 ระบบ + แท็บย่อย ----
-// แท็บ: [รหัส, ชื่อ, ลิงก์, ป้ายตัวเลข] · ลิงก์เดิม (#my #rooms #tasks #inbox #cal #setup #roster) ยังใช้ได้ทั้งหมด
+// แท็บ: [รหัส, ชื่อ, ลิงก์, ป้ายตัวเลข] · ลิงก์เดิม (#my #rooms/* #tasks #inbox #cal #setup #roster) ยังใช้ได้ทั้งหมด
 const MENUS = {
   work: [['my', '🗓️ ปฏิทิน', '#my'], ['tasks', '✅ งานของฉัน', '#tasks', 'tasks'], ['workload', '⏱️ ภาระงาน', '#workload'], ['setup', '⚙️ ตั้งค่าเทอม', '#setup']],
-  rooms: [['board', '🗓️ ตารางห้อง', '#rooms/board'], ['mine', '📋 การจองของฉัน', '#rooms/mine'], ['inbox', '📥 รออนุมัติ', '#inbox', 'inbox'], ['moves', '🙏 คำขอย้าย', '#rooms/moves', 'mv'], ['term', '📊 ห้องต้นเทอม', '#rooms/term'], ['away', '🙈 วันไม่อยู่', '#rooms/away']],
-  check: [['cal', '📅 เช็คชื่อรายวัน', '#cal'], ['roster', '👥 รายชื่อนักศึกษา', '#roster']],
+  rooms: [['board', '🗓️ ปฏิทินห้อง', '#rooms/board'], ['status', '📋 คำขอและสถานะ', '#rooms/status', 'rooms']],
+  check: [['cal', '📅 เช็คชื่อรายวัน', '#cal'], ['roster', '👥 รายชื่อนักศึกษา', '#roster'], ['leave', '📝 คำขอลา', '#leave', 'lv']],
 };
 const SOON = {
   workload: ['⏱️', 'ภาระงาน', 'วางแผนและบันทึกภาระงานตาม Agreement / Achievement แล้วดูผลบนปฏิทินตารางงาน'],
@@ -547,9 +547,10 @@ function whereAmI() {
   const [kind, arg] = location.hash.replace(/^#/, '').split('/');
   if (kind === '' || kind === 'my') return ['work', 'my'];
   if (kind === 'tasks' || kind === 'setup' || kind === 'workload') return ['work', kind];
-  if (kind === 'rooms') return ['rooms', MENUS.rooms.some((t) => t[0] === arg) ? arg : 'board'];
-  if (kind === 'inbox') return ['rooms', 'inbox'];
+  if (kind === 'rooms') return ['rooms', ['status', 'queue', 'mine', 'moves', 'term', 'away', 'history'].includes(arg) ? 'status' : 'board'];
+  if (kind === 'inbox') return ['rooms', 'status'];
   if (kind === 'roster') return ['check', 'roster'];
+  if (kind === 'leave') return ['check', 'leave'];
   if (kind === 'stock' || kind === 'sheet' || kind === 'cost') return [kind, null];
   return ['check', 'cal']; // #cal #day #s
 }
@@ -634,9 +635,10 @@ function route() {
   if (kind === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(arg || '')) return openDay(arg);
   const third = location.hash.split('/')[2] || null;
   if (kind === 'my' || kind === '') return W.openMy(arg || null, third);
-  if (kind === 'rooms') return W.openRooms(arg || 'board', third);
+  if (kind === 'rooms') return W.openRooms(arg || 'board', third, location.hash.split('/')[3] || null);
   if (kind === 'tasks') return W.openTasks();
-  if (kind === 'inbox') return W.openInbox();
+  if (kind === 'inbox') return location.replace('#rooms/status/queue'); // ลิงก์เดิม (เช่น จาก Telegram) → คำขอและสถานะ
+  if (kind === 'leave') return W.openInbox('leave');
   if (SOON[kind]) return openSoon(kind);
   return openCal(/^\d{4}-\d{2}$/.test(arg || '') ? arg : bkkToday().slice(0, 7));
 }
