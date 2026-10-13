@@ -559,7 +559,7 @@
   }
 
   // ห้องว่างช่วงเวลา → แสดงใต้ช่องเลือกห้อง
-  async function showFree(md, date, st, en, targetSel, outSel) {
+  async function showFree(md, date, st, en, targetSel, outSel, onPick) {
     const out = md.q(outSel);
     if (!date || !st || !en || en <= st) { out.innerHTML = ''; return; }
     out.innerHTML = '<span class="muted">กำลังตรวจห้องว่าง…</span>';
@@ -569,7 +569,7 @@
       const ok = d.rooms.some((r) => r.location_id === cur);
       out.innerHTML = `${ok ? '<span class="tag teal">ห้องที่เลือกว่าง</span>' : '<span class="tag red">ห้องที่เลือกไม่ว่าง</span>'}
         ${d.rooms.length ? `<div class="muted" style="margin-top:4px">ห้องว่างช่วงนี้: ${d.rooms.map((r) => `<a href="#" data-pick="${esc(r.location_id)}">${esc(r.name)}</a>`).join(' · ')}</div>` : '<div class="muted">ไม่มีห้องว่างเลยช่วงนี้</div>'}`;
-      out.querySelectorAll('[data-pick]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); md.q(targetSel).value = a.dataset.pick; showFree(md, date, st, en, targetSel, outSel); }));
+      out.querySelectorAll('[data-pick]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); md.q(targetSel).value = a.dataset.pick; if (onPick) onPick(); else showFree(md, date, st, en, targetSel, outSel); }));
     } catch (e) { out.innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
   }
 
@@ -1144,7 +1144,13 @@
     });
   }
 
-  // ---------- ฟอร์มขอจอง ----------
+  // ---------- ฟอร์มขอจอง: เลือกห้อง + วัน → เห็นช่วงว่างทันที (ข้อตกลง 13 ต.ค. 2569) ----------
+  // แถบการจองเดิม (มีตัวเลขเวลา) + แถบ "คุณเลือก" แกนเวลาเดียวกัน · กดการ์ดช่วงว่างเพื่อเติมเวลา (คงระยะเวลาที่ขอ)
+  // จองหลายวัน: แสดงสูงสุด 6 วันแรก วันละแถว · การ์ดช่วงว่าง = ช่วงที่ว่างตรงกันทุกวันที่แสดง
+  const OFFICE = [8 * 60 + 30, 16 * 60 + 30]; // เวลาราชการ (ได้สิทธิ์ก่อน)
+  const BK_DAYS = 6, BK_LANE = 44;
+  const durTh = (m) => { const h = Math.floor(m / 60), r = m % 60; return h ? `${h} ชม.${r ? ` ${r} นาที` : ''}` : `${r} นาที`; };
+  const clampMin = (m) => fromMin(Math.max(0, Math.min(1440, m)));
   async function bookingForm(p = {}) {
     await W.init();
     const locId = p.location_id || INIT.rooms.find((r) => r.room_status !== 'closed')?.location_id || '';
@@ -1152,45 +1158,67 @@
     const dw = p.date ? dow(p.date) + 1 : dow(bkkToday()) + 1;
     const myCourses = INIT.courses;
     const md = modal('ขอจองห้อง', `
+      <div class="muted" style="margin:-4px 0 10px">เลือกห้องและวัน แล้วเลือกช่วงที่ว่างได้เลย</div>
       <div class="fgrid">
-        <div class="full"><label>ห้อง *</label><select data-k="loc">${roomOptions(locId, { all: false })}</select><div class="hint" data-contacts></div></div>
-        <div><label>ประเภทการใช้ *</label><select data-k="kind">${kinds.map(([k, t]) => opt(k, t, p.kind || 'prep')).join('')}</select></div>
-        <div><label>ชื่อเรื่อง</label><input data-k="title" maxlength="200" placeholder="เช่น เตรียมสารแล็บ 3"></div>
-        <div><label>รายวิชา (ใช้คิดต้นทุน)</label><select data-k="course">${opt('', '— ไม่ใช่งานของวิชา —', '')}${myCourses.map((c) => opt(`${c.course_id}|${c.semester_id}`, `${c.course_code} · ${c.course_name}`, '')).join('')}</select></div>
-        <div><label>หรือ ชื่อโครงการ/บริการ</label><input data-k="project" maxlength="200" placeholder="เช่น โครงการวิจัย ก."></div>
-        <div class="full"><label>วัตถุประสงค์</label><input data-k="purpose" maxlength="1000"></div>
-        <div class="full"><label>ผู้ใช้ห้องจริง (ถ้าไม่ใช่ฉัน)</label><input data-k="actual" maxlength="200" placeholder="เช่น นศ.ปริญญาโท 3 คน"></div>
+        <div><label>ห้อง *</label><select data-k="loc">${roomOptions(locId, { all: false })}</select></div>
+        <div data-pp="once"><label>วันที่ต้องการจอง *</label><input type="date" data-k="date" value="${esc(p.date || bkkToday())}"></div>
+        <div data-pp="weekly range dates" hidden><label>วันที่</label><div class="hint" style="margin-top:10px">กำหนดวันที่ช่อง "รูปแบบ" ด้านล่าง</div></div>
+      </div>
+      <div class="bk-av" data-av></div>
+      <div data-freeout class="hint"></div>
+      <h4 class="bk-h">เวลาที่ต้องการใช้</h4>
+      <div class="fgrid">
+        <div><label>เวลาเริ่ม *</label><input type="time" data-k="st" value="${esc(p.start || '09:00')}" step="300"></div>
+        <div><label>เวลาเลิก *</label><input type="time" data-k="en" value="${esc(p.end || '12:00')}" step="300"></div>
+        <div><label>เตรียมก่อน (นาที)</label><input type="number" data-k="setup" min="0" max="600" step="5" inputmode="numeric"></div>
+        <div><label>เก็บหลัง (นาที)</label><input type="number" data-k="tear" min="0" max="600" step="5" inputmode="numeric"></div>
+      </div>
+      <div data-sum></div>
+      <div class="fgrid" style="margin-top:14px">
         <div class="full"><label>รูปแบบ</label><div class="segc" data-pat><button data-p="once" class="on">ครั้งเดียว</button><button data-p="weekly">ทุกสัปดาห์</button><button data-p="range">ทุกวันในช่วง</button><button data-p="dates">เลือกหลายวัน</button></div></div>
-        <div data-pp="once"><label>วันที่ *</label><input type="date" data-k="date" value="${esc(p.date || bkkToday())}"></div>
         <div data-pp="weekly" hidden class="full"><label>วันในสัปดาห์</label><div class="wdays">${WD.map((w, i) => `<button type="button" data-wd="${i + 1}" class="${i + 1 === dw ? 'on' : ''}">${w}</button>`).join('')}</div></div>
         <div data-pp="weekly range" hidden><label>ตั้งแต่ *</label><input type="date" data-k="from" value="${esc(p.date || bkkToday())}"></div>
         <div data-pp="weekly range" hidden><label>ถึง *</label><input type="date" data-k="until" value="${addDays(p.date || bkkToday(), 28)}"></div>
         <div data-pp="range" hidden class="full"><label class="inl"><input type="checkbox" data-k="skipwe" checked> ข้ามเสาร์-อาทิตย์</label></div>
         <div data-pp="dates" hidden class="full"><label>วันที่ (เพิ่มได้หลายวัน)</label><div class="row" style="gap:6px"><input type="date" data-k="adddate" style="width:auto"><button type="button" class="btn btn-ghost btn-sm" data-adddate>+ เพิ่มวัน</button></div><div data-datelist class="row" style="gap:4px;margin-top:6px"></div></div>
-        <div><label>เวลาเริ่ม *</label><input type="time" data-k="st" value="${esc(p.start || '09:00')}" step="300"></div>
-        <div><label>เวลาเลิก *</label><input type="time" data-k="en" value="${esc(p.end || '12:00')}" step="300"></div>
-        <div><label>เวลาเตรียมก่อน (นาที)</label><input type="number" data-k="setup" min="0" max="600" step="5" inputmode="numeric"></div>
-        <div><label>เวลาเก็บหลัง (นาที)</label><input type="number" data-k="tear" min="0" max="600" step="5" inputmode="numeric"></div>
       </div>
-      <div class="row" style="margin:12px 0 8px; gap:6px"><button class="btn btn-ghost btn-sm" data-free>หาห้องว่างช่วงนี้</button><span class="spacer"></span><button class="btn btn-primary" data-preview>ตรวจห้องว่าง →</button></div>
-      <div data-freeout class="hint"></div>
+      <details class="bk-more"${p.kind ? ' open' : ''}><summary>รายละเอียดการจอง</summary>
+        <div class="fgrid" style="margin-top:10px">
+          <div><label>ประเภทการใช้ *</label><select data-k="kind">${kinds.map(([k, t]) => opt(k, t, p.kind || 'prep')).join('')}</select></div>
+          <div><label>ชื่อเรื่อง</label><input data-k="title" maxlength="200" placeholder="เช่น เตรียมสารแล็บ 3"></div>
+          <div><label>รายวิชา (ใช้คิดต้นทุน)</label><select data-k="course">${opt('', '— ไม่ใช่งานของวิชา —', '')}${myCourses.map((c) => opt(`${c.course_id}|${c.semester_id}`, `${c.course_code} · ${c.course_name}`, '')).join('')}</select></div>
+          <div><label>หรือ ชื่อโครงการ/บริการ</label><input data-k="project" maxlength="200" placeholder="เช่น โครงการวิจัย ก."></div>
+          <div class="full"><label>วัตถุประสงค์</label><input data-k="purpose" maxlength="1000"></div>
+          <div class="full"><label>ผู้ใช้ห้องจริง (ถ้าไม่ใช่ฉัน)</label><input data-k="actual" maxlength="200" placeholder="เช่น นศ.ปริญญาโท 3 คน"></div>
+        </div>
+      </details>
+      <div class="row bk-foot"><span class="muted">ช่วงว่างคิดรวมเวลาเตรียม/เก็บของรายการเดิมแล้ว</span><span class="spacer"></span><button class="btn btn-primary" data-preview>ตรวจและดูสรุปคำขอ</button></div>
       <div data-out></div>`, { wide: true });
     const v = (k) => md.q(`[data-k="${k}"]`);
-    let pat = 'once', dates = [], preview = null;
+    let pat = 'once', dates = [], preview = null, seq = 0, win = null;
+    const board = { resv: [], have: new Set() }; // ข้อมูลการจองทุกห้อง แยกตามวันที่โหลดแล้ว
+    const resetOut = () => { preview = null; md.q('[data-out]').innerHTML = ''; };
     const syncRoom = () => {
       const r = room(v('loc').value);
       v('setup').placeholder = `ค่าห้อง ${r?.setup_minutes ?? 0}`; v('tear').placeholder = `ค่าห้อง ${r?.teardown_minutes ?? 0}`;
-      preview = null; md.q('[data-out]').innerHTML = '';
+      md.q('[data-freeout]').innerHTML = '';
+      resetOut();
     };
-    v('loc').onchange = syncRoom; syncRoom();
+    const changed = () => { resetOut(); render(); };
+    v('loc').onchange = () => { syncRoom(); render(); }; syncRoom();
     md.qa('[data-pat] button').forEach((b) => (b.onclick = () => {
       pat = b.dataset.p; md.qa('[data-pat] button').forEach((x) => x.classList.toggle('on', x === b));
       md.qa('[data-pp]').forEach((el) => (el.hidden = !el.dataset.pp.split(' ').includes(pat)));
-      preview = null; md.q('[data-out]').innerHTML = '';
+      changed();
     }));
-    md.qa('[data-wd]').forEach((b) => (b.onclick = () => b.classList.toggle('on')));
-    const drawDates = () => { md.q('[data-datelist]').innerHTML = dates.map((d, i) => `<span class="tag teal">${fmtD(d)} <a href="#" data-rm="${i}">✕</a></span>`).join('') || '<span class="muted">ยังไม่ได้เลือกวัน</span>'; md.qa('[data-rm]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); dates.splice(Number(a.dataset.rm), 1); drawDates(); })); };
-    md.q('[data-adddate]').onclick = () => { const d = v('adddate').value; if (d && !dates.includes(d)) { dates.push(d); dates.sort(); drawDates(); } };
+    md.qa('[data-wd]').forEach((b) => (b.onclick = () => { b.classList.toggle('on'); changed(); }));
+    ['date', 'from', 'until', 'skipwe'].forEach((k) => v(k).addEventListener('change', changed));
+    ['st', 'en', 'setup', 'tear'].forEach((k) => { v(k).addEventListener('input', changed); v(k).addEventListener('change', changed); });
+    const drawDates = () => {
+      md.q('[data-datelist]').innerHTML = dates.map((d, i) => `<span class="tag teal">${fmtD(d)} <a href="#" data-rm="${i}">✕</a></span>`).join('') || '<span class="muted">ยังไม่ได้เลือกวัน</span>';
+      md.qa('[data-rm]').forEach((a) => (a.onclick = (e) => { e.preventDefault(); dates.splice(Number(a.dataset.rm), 1); drawDates(); changed(); }));
+    };
+    md.q('[data-adddate]').onclick = () => { const d = v('adddate').value; if (d && !dates.includes(d)) { dates.push(d); dates.sort(); drawDates(); changed(); } };
     drawDates();
     const pattern = () => {
       if (pat === 'once') return { type: 'once', date: v('date').value };
@@ -1202,13 +1230,187 @@
       location_id: v('loc').value, pattern: pattern(), start_time: v('st').value, end_time: v('en').value,
       setup_minutes: v('setup').value === '' ? undefined : v('setup').value, teardown_minutes: v('tear').value === '' ? undefined : v('tear').value,
     });
-    md.q('[data-free]').onclick = () => {
-      const d = pat === 'once' ? v('date').value : pat === 'dates' ? dates[0] : v('from').value;
-      showFree(md, d, v('st').value, v('en').value, '[data-k="loc"]', '[data-freeout]');
-    };
+
+    // วันที่ของคำขอ (แสดงสูงสุด 6 วันแรก + นับทั้งหมด)
+    function patDates() {
+      const list = []; let total = 0;
+      const push = (d) => { total++; if (list.length < BK_DAYS) list.push(d); };
+      if (pat === 'once') { if (ISO_DATE.test(v('date').value)) push(v('date').value); }
+      else if (pat === 'dates') dates.forEach(push);
+      else {
+        const a = v('from').value, b = v('until').value;
+        const wds = md.qa('[data-wd].on').map((x) => Number(x.dataset.wd));
+        if (ISO_DATE.test(a) && ISO_DATE.test(b) && b >= a) {
+          for (let d = a, i = 0; d <= b && i < 400; d = addDays(d, 1), i++) {
+            const k = dow(d) + 1;
+            if (pat === 'weekly' ? wds.includes(k) : !(v('skipwe').checked && k >= 6)) push(d);
+          }
+        }
+      }
+      return { list, total };
+    }
+    // โหลดตารางห้องเฉพาะวันที่ยังไม่มี (ครั้งละไม่เกิน 14 วัน)
+    async function ensure(ds) {
+      const need = ds.filter((d) => !board.have.has(d)).sort();
+      while (need.length) {
+        const a = need[0], last = need.filter((d) => d <= addDays(a, 13)).pop();
+        const span = Math.round((Date.parse(last) - Date.parse(a)) / 864e5) + 1;
+        const r = await bApi('rooms_board', { date: a, days: span });
+        const ids = new Set(board.resv.map((x) => x.reservation_id));
+        (r.reservations || []).forEach((x) => { if (!ids.has(x.reservation_id)) board.resv.push(x); });
+        for (let i = 0; i < span; i++) board.have.add(addDays(a, i));
+        need.splice(0, need.filter((d) => d <= last).length);
+      }
+    }
+    function dayItems(d, loc) {
+      const t0 = Date.parse(`${d}T00:00:00+07:00`);
+      return board.resv.filter((x) => x.location_id === loc && Date.parse(x.starts_at) < t0 + 864e5 && Date.parse(x.ends_at) > t0)
+        .map((x) => ({ x, s: Math.max(0, (Date.parse(x.starts_at) - t0) / 6e4), e: Math.min(1440, (Date.parse(x.ends_at) - t0) / 6e4), p0: x.setup_minutes || 0, p1: x.teardown_minutes || 0, st: x.status === 'pending' ? 'pend' : 'ok' }))
+        .sort((a, b) => a.s - b.s);
+    }
+    function mine() {
+      const r = room(v('loc').value);
+      const n = (k, def) => { const x = v(k).value; return x === '' ? (Number(def) || 0) : Math.max(0, Number(x) || 0); };
+      const S = toMin(v('st').value), E = toMin(v('en').value);
+      return { S, E, dur: E - S, su: n('setup', r?.setup_minutes), td: n('tear', r?.teardown_minutes), ok: !!v('st').value && !!v('en').value && E > S };
+    }
+    // ช่วงว่าง = ช่วงที่แสดง − (การจองเดิม + เวลาเตรียม/เก็บ)
+    function gaps(items, w0, w1) {
+      const busyL = items.map((i) => [i.s - i.p0, i.e + i.p1]).sort((a, b) => a[0] - b[0]);
+      const out = []; let cur = w0;
+      for (const [a, z] of busyL) { if (a > cur) out.push([cur, Math.min(a, w1)]); cur = Math.max(cur, z); if (cur >= w1) break; }
+      if (cur < w1) out.push([cur, w1]);
+      return out.filter(([a, z]) => z - a >= 15);
+    }
+
+    async function render() {
+      const my = ++seq;
+      const box = md.q('[data-av]');
+      const { list: ds, total } = patDates();
+      const loc = v('loc').value;
+      if (!loc || !ds.length) { box.innerHTML = `<div class="muted">${!loc ? 'เลือกห้องก่อน' : 'เลือกวันที่ก่อน'} แล้วช่วงว่างของห้องจะแสดงที่นี่</div>`; drawSum(null); return; }
+      if (ds.some((d) => !board.have.has(d))) {
+        box.classList.add('loading');
+        if (!box.querySelector('.bk-axis')) box.innerHTML = '<div class="skel" style="height:150px"></div>';
+        try { await ensure(ds); } catch (e) { if (my === seq) { box.classList.remove('loading'); box.innerHTML = `<div class="err">${esc(e.message)}</div>`; } return; }
+        if (my !== seq) return;
+        box.classList.remove('loading');
+      }
+      draw(box, ds, total);
+    }
+
+    function draw(box, ds, total) {
+      const loc = v('loc').value, m = mine(), multi = pat !== 'once';
+      const days = ds.map((d) => ({ d, items: dayItems(d, loc) }));
+      const w = win || twNow();
+      let w0 = w.from * 60, w1 = w.to * 60;
+      const outside = days.reduce((n, D) => n + D.items.filter((i) => i.e + i.p1 <= w0 || i.s - i.p0 >= w1).length, 0);
+      if (m.ok) { w0 = Math.max(0, Math.min(w0, Math.floor((m.S - m.su) / 60) * 60)); w1 = Math.min(1440, Math.max(w1, Math.ceil((m.E + m.td) / 60) * 60)); } // ให้เห็นช่วงที่เลือกเสมอ
+      const span = w1 - w0, P = (x) => ((Math.min(Math.max(x, w0), w1) - w0) / span) * 100;
+      const step = narrow() || span > 14 * 60 ? 2 : 1;
+      const ticks = []; for (let h = w0 / 60; h <= w1 / 60; h += step) ticks.push(h);
+      if (ticks[ticks.length - 1] !== w1 / 60) ticks.push(w1 / 60);
+      const off = (OFFICE[0] > w0 ? `<i class="bk-off" style="left:0;width:${P(OFFICE[0])}%"></i>` : '') + (OFFICE[1] < w1 ? `<i class="bk-off" style="left:${P(OFFICE[1])}%;right:0"></i>` : '');
+      const grid = ticks.slice(1, -1).map((h) => `<i class="bk-gl" style="left:${P(h * 60)}%"></i>`).join('');
+      const rng = (s, e) => `${clampMin(s)}–${clampMin(e)}`;
+      const bar = (s, e, p0, p1, cls, code, tip, lane) => {
+        const top = lane * BK_LANE + 15;
+        const pad = p0 || p1 ? `<i class="bk-pad ${cls}" style="left:${P(s - p0)}%;width:${P(e + p1) - P(s - p0)}%;top:${top}px"></i>` : '';
+        return `${pad}<div class="bk-bar ${cls}" title="${esc(tip)}" style="left:${P(s)}%;width:${Math.max(P(e) - P(s), 0.6)}%;top:${top}px"><span class="lb"><b>${rng(s, e)}</b>${code ? `<em> ${esc(code)}</em>` : ''}</span></div>`;
+      };
+      const clashes = days.map((D) => (m.ok ? D.items.filter((i) => i.s - i.p0 < m.E + m.td && i.e + i.p1 > m.S - m.su) : []));
+      const rows = days.map((D, k) => {
+        const vis = D.items.filter((i) => i.e + i.p1 > w0 && i.s - i.p0 < w1);
+        const lanes = [];
+        vis.forEach((i) => { const a = i.s - i.p0, z = i.e + i.p1; let L = lanes.findIndex((end) => end <= a); if (L < 0) { L = lanes.length; lanes.push(z); } else lanes[L] = z; i.lane = L; });
+        const who = (i) => i.x.requester?.full_name ? ` · ${i.x.requester.full_name}` : '';
+        const bars = vis.map((i) => bar(i.s, i.e, i.p0, i.p1, `st-${i.st}`, resvLabel(i.x),
+          `${ST_META[i.st][1]} · ${resvLabel(i.x)} · ${rng(i.s, i.e)}${i.p0 || i.p1 ? ` (เตรียม ${i.p0} / เก็บ ${i.p1} นาที)` : ''}${who(i)}`, i.lane)).join('');
+        const hit = clashes[k].length;
+        const mb = m.ok ? bar(m.S, m.E, m.su, m.td, hit ? 'mine bad' : 'mine', '', `คุณเลือก ${rng(m.S, m.E)}${m.su || m.td ? ` · กันห้อง ${rng(m.S - m.su, m.E + m.td)}` : ''}`, 0) : '';
+        return `${multi ? `<div class="bk-day">${fmtD(D.d)}${hit ? ' <span class="tag red">ชน</span>' : ''}</div>` : ''}
+          <div class="bk-lab">การจองเดิม${vis.length ? '' : ' · ว่างทั้งช่วง'}</div>
+          <div class="bk-track" style="height:${Math.max(1, lanes.length) * BK_LANE}px">${off}${grid}${bars}</div>
+          <div class="bk-lab">คุณเลือก${m.ok && (m.su || m.td) ? ' · ลายเส้น = เวลาเตรียม/เก็บ' : ''}</div>
+          <div class="bk-track" style="height:${BK_LANE}px">${off}${grid}${mb}</div>`;
+      }).join('');
+      // การ์ดช่วงว่าง (หลายวัน = ว่างตรงกันทุกวันที่แสดง)
+      const free = gaps(days.flatMap((D) => D.items), w0, w1);
+      const need = m.ok ? m.su + m.dur + m.td : 0;
+      const cards = free.length ? free.map(([a, z]) => {
+        const fits = !m.ok || z - a >= need;
+        const us = a + (m.ok ? m.su : 0), ue = m.ok ? us + m.dur : z;
+        const outM = (x, y) => Math.max(0, Math.min(y, OFFICE[0]) - x) + Math.max(0, y - Math.max(x, OFFICE[1]));
+        const offh = fits && m.ok ? us < OFFICE[0] || ue > OFFICE[1] : outM(a, z) * 2 > z - a; // ช่วงที่ไม่พอ: ติดป้ายเมื่อเกินครึ่งอยู่นอกเวลาราชการ
+        const cur = m.ok && fits && m.S === us;
+        const why = !m.ok ? '' : fits ? `ใช้ ${fromMin(us)}–${fromMin(ue)}` : z - a >= m.dur ? 'ไม่พอเมื่อรวมเวลาเตรียม/เก็บ' : 'ช่วงนี้ไม่พอกับเวลาที่ขอ';
+        return `<button type="button" class="bk-slot ${fits ? '' : 'no'} ${cur ? 'on' : ''}" ${fits && m.ok ? `data-slot="${a}"` : 'disabled'}>
+          <b>ว่าง ${clampMin(a)}–${clampMin(z)}</b><span>${durTh(z - a)}</span>${why ? `<span class="why">${why}</span>` : ''}${offh ? '<span class="tag amber">นอกเวลาราชการ</span>' : ''}</button>`;
+      }).join('') : '<div class="muted">ไม่มีช่วงว่างในช่วงเวลาที่แสดง</div>';
+      const all = days.flatMap((D) => D.items.map((i) => ({ ...i, d: D.d })));
+      const list = all.map((i) => `<div class="li">${multi ? `${fmtD(i.d)} · ` : ''}<b class="mono">${rng(i.s, i.e)}</b> ${statusTag(i.x.status)} ${esc(resvLabel(i.x))} · ${esc(i.x.kind_th || '')}${i.p0 || i.p1 ? ` <span class="muted">· กันห้อง ${rng(i.s - i.p0, i.e + i.p1)}</span>` : ''}${i.x.requester?.full_name ? ` <span class="muted">· ${esc(i.x.requester.full_name)}</span>` : ''}</div>`).join('');
+      box.innerHTML = `<div class="bk-head"><div><b>ช่วงว่างของห้อง</b><div class="muted">${multi ? `แสดง ${ds.length} วันแรก${total > ds.length ? ` จากทั้งหมด ${total} วัน` : ''}` : fmtLong(ds[0])}</div></div>
+          <span class="spacer"></span><button type="button" class="btn btn-ghost btn-sm" data-tw title="ปรับช่วงเวลาที่แสดง">🕗 ${fromMin(w0)}–${fromMin(w1)}</button></div>
+        ${outside ? `<button type="button" class="hg-out" data-wide>⚠ มีการจองนอกช่วงที่แสดง ${outside} รายการ — กดเพื่อดูทั้งวัน</button>` : ''}${win ? '<button type="button" class="hg-out back" data-narrow>กำลังดูทั้งวัน — กลับช่วงปกติ</button>' : ''}
+        <div class="bk-axis">${ticks.map((h) => `<span style="left:${P(h * 60)}%">${String(h).padStart(2, '0')}</span>`).join('')}</div>
+        ${rows}
+        <div class="bk-legend"><span><i class="st-ok"></i>อนุมัติแล้ว</span><span><i class="st-pend"></i>รออนุมัติ</span><span><i class="hat"></i>เตรียม/เก็บ</span><span><i class="mine"></i>คุณเลือก</span><span><i class="bad"></i>ชน</span><span><i class="off"></i>นอกเวลาราชการ (ก่อน 08:30 / หลัง 16:30)</span></div>
+        <div class="bk-slots-h">${multi ? 'ช่วงที่ว่างตรงกันทุกวันที่แสดง' : 'ช่วงว่าง'}${m.ok ? ' · กดเพื่อใช้ช่วงนั้น (คงระยะเวลาที่ขอ)' : ''}</div>
+        <div class="bk-slots">${cards}</div>
+        <div class="bk-links">${all.length ? `<details class="bk-list"><summary>ดูรายการที่กันห้อง (${all.length})</summary>${list}</details>` : ''}<a href="#" data-others>ดูห้องอื่นที่ว่างช่วงเวลานี้</a></div>`;
+      // ป้ายตัวเลขบนแถบ: ไม่พอที่ → ตัดรหัสวิชาออก → ยังไม่พอ ย้ายไปเหนือแถบ
+      box.querySelectorAll('.bk-bar').forEach((b) => {
+        const lb = b.querySelector('.lb'), room0 = b.clientWidth - 14;
+        if (lb.scrollWidth > room0) lb.querySelector('em')?.remove();
+        if (lb.scrollWidth > room0) { b.classList.add('lbl-out'); if (b.offsetLeft + lb.scrollWidth > b.parentElement.clientWidth) b.classList.add('lbl-r'); }
+      });
+      // ป้ายเหนือแถบที่ทับกัน → ย้ายป้ายถัดไปไว้ใต้แถบ (ขยายความสูงแถวให้)
+      box.querySelectorAll('.bk-track').forEach((t) => {
+        const used = { up: [], down: [] };
+        const hit = (arr, r) => arr.some((q) => q.top === r.top && r.left < q.right + 6 && r.right > q.left - 6);
+        let grow = 0;
+        [...t.querySelectorAll('.bk-bar.lbl-out')].sort((x, y) => x.offsetLeft - y.offsetLeft).forEach((b) => {
+          const r = b.querySelector('.lb').getBoundingClientRect(), key = { top: b.offsetTop, left: r.left, right: r.right };
+          if (!hit(used.up, key)) return used.up.push(key);
+          b.classList.add('lbl-dn'); used.down.push(key);
+          grow = Math.max(grow, b.offsetTop + b.offsetHeight + 16 - t.clientHeight);
+        });
+        if (grow > 0) t.style.height = `${t.clientHeight + grow}px`;
+      });
+      box.querySelectorAll('[data-slot]').forEach((c) => (c.onclick = () => {
+        const s = Number(c.dataset.slot) + m.su;
+        v('st').value = fromMin(s); v('en').value = fromMin(s + m.dur); changed();
+      }));
+      box.querySelector('[data-tw]').onclick = () => twDialog(() => { win = null; render(); });
+      box.querySelector('[data-wide]')?.addEventListener('click', () => { win = { from: 0, to: 24 }; render(); });
+      box.querySelector('[data-narrow]')?.addEventListener('click', () => { win = null; render(); });
+      box.querySelector('[data-others]').onclick = (e) => {
+        e.preventDefault();
+        if (!m.ok) return md.err('ใส่เวลาเริ่ม/เลิกก่อน');
+        showFree(md, ds[0], v('st').value, v('en').value, '[data-k="loc"]', '[data-freeout]', () => { syncRoom(); render(); });
+      };
+      drawSum({ m, days, clashes, multi });
+    }
+
+    function drawSum(c) {
+      const out = md.q('[data-sum]');
+      if (!c) { out.innerHTML = ''; return; }
+      const { m, days, clashes, multi } = c;
+      if (!m.ok) { out.innerHTML = '<div class="bk-clash">เวลาเลิกต้องหลังเวลาเริ่ม</div>'; return; }
+      const offh = m.S < OFFICE[0] || m.E > OFFICE[1];
+      const hitDays = clashes.filter((x) => x.length).length;
+      const seen = new Set(), hits = clashes.flat().filter((i) => !seen.has(i.x.reservation_id) && seen.add(i.x.reservation_id));
+      out.innerHTML = `<div class="bk-sum">เวลาใช้ <b>${fromMin(m.S)}–${fromMin(m.E)}</b> · ${durTh(m.dur)}${offh ? ' <span class="tag amber">นอกเวลาราชการ</span>' : ''}<br>
+          กันห้องทั้งหมด <b>${clampMin(m.S - m.su)}–${clampMin(m.E + m.td)}</b> · รวมเตรียม ${m.su} / เก็บ ${m.td} นาที</div>
+        ${hits.length ? `<div class="bk-clash">ช่วงที่เลือกชน${multi ? ` ${hitDays} จาก ${days.length} วันที่แสดง` : ''} · ${hits.slice(0, 3).map((i) => `${esc(i.x.kind_th || '')} ${esc(resvLabel(i.x))} (${clampMin(i.s)}–${clampMin(i.e)}${i.x.status === 'pending' ? ' รออนุมัติ' : ''})`).join(' · ')}${hits.length > 3 ? ` และอีก ${hits.length - 3} รายการ` : ''} · เลือกช่วงว่างด้านบนได้</div>`
+          : `<div class="bk-okline">✓ ไม่ชนกับการจองเดิม${multi ? ' ในวันที่แสดง' : ''}</div>`}`;
+    }
+    render();
+
     md.q('[data-preview]').onclick = (e) => busy(e.currentTarget, async () => {
       md.err('');
-      try { preview = await bApi('request_preview', base()); drawPreview(); }
+      if (!mine().ok) return md.err('เวลาเลิกต้องหลังเวลาเริ่ม');
+      try { preview = await bApi('request_preview', base()); drawPreview(); md.q('[data-out]').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       catch (er) { md.err(er.message); }
     });
     function drawPreview() {

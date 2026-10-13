@@ -299,3 +299,65 @@ body.wide .wrap{ max-width:1240px; }
   .layers > .muted{ display:none; } .wbar h2{ min-width:0; font-size:15px; }
   .rb-grid{ grid-template-columns:120px var(--tw); min-width:calc(120px + var(--tw)); } .rb-room small.ct{ display:none; }
 }
+
+/* ---------- ฟอร์มขอจอง: ช่วงว่างของห้อง (13 ต.ค. 2569) ---------- */
+.bk-av{ --mine:#5E4386; background:#F4F6F5; border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin:12px 0 4px; transition:opacity .15s; }
+.bk-av.loading{ opacity:.55; }
+.bk-head{ display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; }
+.bk-head b{ font-size:15px; }
+.bk-axis{ position:relative; height:18px; font-size:11.5px; color:var(--ink-muted); font-family:'IBM Plex Mono',monospace; margin-top:6px; }
+.bk-axis span{ position:absolute; top:0; transform:translateX(-50%); }
+.bk-axis span:first-child{ transform:none; } .bk-axis span:last-child{ transform:translateX(-100%); }
+.bk-day{ font-size:13px; font-weight:700; margin:12px 0 0; padding-top:8px; border-top:1px dashed var(--line); }
+.bk-lab{ font-size:11.5px; color:var(--ink-muted); margin:6px 0 2px; }
+.bk-track{ position:relative; background:#fff; border:1px solid var(--line); border-radius:8px; }
+.bk-gl{ position:absolute; top:0; bottom:0; width:1px; background:#EDF0EE; }
+.bk-off{ position:absolute; top:0; bottom:0; background:repeating-linear-gradient(135deg,#F3F4F3 0 6px,#E6E9E7 6px 7px); }
+.bk-off:first-child{ border-radius:7px 0 0 7px; }
+.bk-bar{ position:absolute; height:26px; border-radius:6px; background:var(--c); color:#fff; border:1.5px solid var(--c); display:flex; align-items:center; padding:0 6px; box-sizing:border-box; min-width:4px; z-index:2; box-shadow:0 1px 2px rgba(0,0,0,.15); }
+.bk-bar .lb{ white-space:nowrap; overflow:hidden; font-size:12px; line-height:1.2; }
+.bk-bar .lb b{ font-family:'IBM Plex Mono',monospace; font-weight:600; }
+.bk-bar .lb em{ font-style:normal; font-weight:600; }
+.bk-bar.st-pend{ background:#FDE68A; color:#713F12; border:1.5px dashed #B45309; }
+.bk-bar.mine{ --c:var(--mine); }
+.bk-bar.mine.bad{ --c:var(--st-rej); }
+.bk-bar.lbl-out .lb{ position:absolute; left:-1px; bottom:calc(100% + 1px); overflow:visible; font-size:11.5px; color:var(--st-ok-ink); }
+.bk-bar.lbl-out.lbl-r .lb{ left:auto; right:-1px; }
+.bk-bar.lbl-out.lbl-dn .lb{ bottom:auto; top:calc(100% + 1px); }
+.bk-bar.lbl-out.st-pend .lb{ color:#854D0E; }
+.bk-bar.lbl-out.mine .lb{ color:var(--mine); }
+.bk-bar.lbl-out.mine.bad .lb{ color:var(--st-rej-ink); }
+.bk-pad{ --pc:var(--c); position:absolute; height:26px; border-radius:6px; z-index:1; box-sizing:border-box; border:1px dashed color-mix(in srgb, var(--pc) 70%, white); background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--pc) 40%, white) 0 4px, transparent 4px 8px); }
+.bk-pad.st-pend{ --pc:#B45309; }
+.bk-pad.mine{ --pc:var(--mine); } .bk-pad.mine.bad{ --pc:var(--st-rej); }
+.bk-legend{ display:flex; flex-wrap:wrap; gap:4px 12px; font-size:11.5px; color:var(--ink-muted); margin:8px 0 2px; }
+.bk-legend span{ display:inline-flex; align-items:center; gap:4px; }
+.bk-legend i{ width:14px; height:10px; border-radius:3px; display:inline-block; background:var(--c); }
+.bk-legend i.st-pend{ background:#FDE68A; border:1px dashed #B45309; }
+.bk-legend i.hat{ background:repeating-linear-gradient(135deg,#9CA3AF 0 2px,transparent 2px 4px); border:1px dashed #9CA3AF; }
+.bk-legend i.mine{ background:var(--mine); } .bk-legend i.bad{ background:var(--st-rej); }
+.bk-legend i.off{ background:repeating-linear-gradient(135deg,#F3F4F3 0 3px,#D5DAD7 3px 4px); border:1px solid var(--line); }
+.bk-slots-h{ font-size:12.5px; font-weight:700; margin:12px 0 6px; }
+.bk-slots{ display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:8px; }
+.bk-slot{ text-align:left; font-family:inherit; background:#fff; border:1.5px solid var(--line); border-radius:11px; padding:8px 10px; cursor:pointer; display:flex; flex-direction:column; gap:2px; color:var(--ink); }
+.bk-slot b{ font-size:13.5px; }
+.bk-slot span{ font-size:12px; color:var(--ink-muted); }
+.bk-slot .why{ color:var(--mine); font-weight:600; }
+.bk-slot:hover:not(:disabled){ border-color:var(--mine); }
+.bk-slot.on{ border-color:var(--mine); background:#F3EFF9; }
+.bk-slot.no{ background:#F1F2F2; cursor:not-allowed; }
+.bk-slot.no .why{ color:var(--ink-muted); font-weight:500; }
+.bk-slot .tag{ align-self:flex-start; margin-top:3px; }
+.bk-links{ display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; justify-content:space-between; margin-top:10px; font-size:13px; }
+.bk-list{ flex:1 1 260px; }
+.bk-list summary{ cursor:pointer; font-weight:600; }
+.bk-list .li{ font-size:12.5px; padding:5px 0; border-top:1px solid var(--line); }
+.bk-list .li:first-of-type{ margin-top:6px; }
+.bk-h{ font-size:14.5px; margin:16px 0 6px; }
+.bk-sum{ background:#EEF0F6; border-radius:10px; padding:9px 12px; font-size:13.5px; margin-top:10px; line-height:1.75; }
+.bk-sum b{ font-family:'IBM Plex Mono',monospace; }
+.bk-clash{ background:var(--st-rej-bg); color:var(--st-rej-ink); border-radius:10px; padding:9px 12px; font-size:13.5px; margin-top:8px; }
+.bk-okline{ color:var(--st-ok-ink); font-size:13px; font-weight:600; margin-top:6px; }
+.bk-more{ margin-top:16px; border-top:1px solid var(--line); padding-top:12px; }
+.bk-more summary{ cursor:pointer; font-weight:700; font-size:14.5px; }
+.bk-foot{ margin-top:16px; gap:8px; }
