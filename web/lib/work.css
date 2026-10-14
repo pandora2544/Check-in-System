@@ -37,9 +37,18 @@ body.wide .wrap{ max-width:1240px; }
 .st-pend{ --c:var(--st-pend); --bg:var(--st-pend-bg); --ink:var(--st-pend-ink); }
 .st-move{ --c:var(--st-move); --bg:var(--st-move-bg); --ink:var(--st-move-ink); }
 .st-none{ --c:var(--st-none); --bg:var(--st-none-bg); --ink:var(--st-none-ink); }
+/* ปฏิทินห้อง: สีตามประเภทการใช้ (มาทีหลัง .st-* จึงทับสีสถานะ) · สถานะ = ไอคอน + เส้นประ (รออนุมัติ) + ขอบฟ้า (รอย้าย) */
+.k-class{ --c:#2F7D5B; --bg:#E3F2EA; --ink:#1F5A41; }
+.k-prep{ --c:#E07A1F; --bg:#FDEBD8; --ink:#8A4510; }
+.k-research{ --c:#2F64C8; --bg:#E1EBFB; --ink:#1D428A; }
+.k-event{ --c:#8B4FC9; --bg:#EFE5FA; --ink:#5B2E8C; }
+.k-maint{ --c:#6B6B6B; --bg:#ECECEC; --ink:#333333; }
+.k-plain{ --c:#9AA5A0; --bg:#fff; --ink:var(--ink-muted, #587067); }
+.rchip.st-move, .hg-bar.st-move, .st-legend .st-move{ box-shadow:0 0 0 2px var(--st-move) !important; }
+.kd-legend{ margin-bottom:0; }
 .st-rej{ --c:var(--st-rej); --bg:var(--st-rej-bg); --ink:var(--st-rej-ink); }
 .st-cxl{ --c:var(--st-cxl); --bg:var(--st-cxl-bg); --ink:var(--st-cxl-ink); }
-.st-legend span[class^="st-"]{ background:var(--bg); color:var(--ink); border-left:4px solid var(--c); border-radius:6px; padding:1px 8px; font-weight:600; }
+.st-legend span[class^="st-"], .st-legend span[class*="k-"]{ background:var(--bg); color:var(--ink); border-left:4px solid var(--c); border-radius:6px; padding:1px 8px; font-weight:600; }
 .st-legend .st-pend{ border:1px dashed var(--c); border-left:4px solid var(--c); }
 .stchips{ margin:0 0 12px; }
 .stchips .chip .nb{ display:inline-block; min-width:17px; padding:0 5px; margin-left:4px; border-radius:999px; background:var(--brick); color:#fff; font-size:10.5px; line-height:17px; }

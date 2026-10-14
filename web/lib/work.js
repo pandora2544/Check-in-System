@@ -833,6 +833,9 @@
   // การจองที่คร่อมวัน d (ไม่นับการจองที่จบเที่ยงคืนพอดีของวันก่อน)
   const covers = (x, d) => x.date <= d && dayIso(x.ends_at) >= d && !(x.date !== d && dayIso(x.ends_at) === d && x.end === '00:00');
   const shortRoom = (n) => String(n || '').replace(/\s*\(.*\)\s*$/, '');
+  // สีบนปฏิทินห้อง = ประเภทการใช้ (สถานะบอกด้วยไอคอน + เส้นประ) — คลาส k-* อยู่ใน lib/work.css
+  const KIND_GROUP = { class: 'class', makeup: 'class', prep: 'prep', reading: 'prep', research: 'research', project: 'research', service: 'research', exam: 'event', event: 'event', training: 'event', maintenance: 'maint' };
+  const kindCls = (x) => `k-${KIND_GROUP[x.kind] || 'research'}`;
   const resvLabel = (x) => (x.course_code ? `${x.course_code}${x.section_no ? ' ก.' + x.section_no : ''}` : (x.title || x.project_name || x.kind_th));
 
   async function loadBoard() {
@@ -847,7 +850,8 @@
           <select id="rbBld" aria-label="อาคาร"></select><select id="rbFloor" aria-label="ชั้น"></select><select id="rbLoc" aria-label="ห้อง"></select>
           <div class="segc" id="rbFilter"><button data-f="all">ทั้งหมด</button><button data-f="mine">ของฉัน</button><button data-f="pend">รออนุมัติ</button><button data-f="move">รอย้าย</button></div>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="rbTw" title="ปรับช่วงเวลาที่แสดง"></button></div>
-        <div class="rlegend st-legend"><span class="st-ok">✓ อนุมัติ</span><span class="st-pend">⏳ รออนุมัติ</span><span class="st-move">⇄ รอย้าย</span><span class="st-none">⚠ ยังไม่มีห้อง</span>
+        <div class="rlegend st-legend kd-legend"><b class="muted">สี = ประเภท</b><span class="k-class">คาบเรียน</span><span class="k-prep">เตรียม/อ่าน</span><span class="k-research">วิจัย/โครงการ/บริการ</span><span class="k-event">สอบ/อบรม/กิจกรรม</span><span class="k-maint">ซ่อมบำรุง</span></div>
+        <div class="rlegend st-legend"><b class="muted">สถานะ</b><span class="k-plain">✓ อนุมัติ</span><span class="k-plain st-pend">⏳ รออนุมัติ (เส้นประ)</span><span class="k-plain st-move">⇄ รอย้าย</span><span class="st-none">⚠ ยังไม่มีห้อง</span>
           <span class="muted">ปฏิเสธ/ยกเลิก ไม่แสดงบนปฏิทิน — ดูที่ "คำขอและสถานะ › ประวัติ"</span></div>
         <div id="rbWarn"></div><div id="rbWrap"><div class="skel"></div></div>`;
       $('rbPrev').onclick = () => go(roomHash(rm.view, boardStep(-1)));
@@ -946,7 +950,7 @@
       id: x.reservation_id, s, e, pad0: x.setup_minutes, pad1: x.teardown_minutes, icon: ST_META[st][0], title: resvLabel(x),
       line: `${x.start}–${x.end} · ${ST_META[st][1]}`,
       tip: `${resvLabel(x)} · ${x.start}–${x.end} · ${x.room || ''} · ${ST_META[st][1]}${x.requester?.full_name ? ' · ' + x.requester.full_name : ''}`,
-      cls: `st-${st} ${mine ? 'mine' : ''} ${x.kind === 'maintenance' ? 'maint' : ''}`,
+      cls: `${kindCls(x)} st-${st} ${mine ? 'mine' : ''}`,
     };
   };
 
@@ -965,10 +969,10 @@
       for (const [k, g] of groups) {
         if (g.length > 2) {
           const st = g.some((x) => resvState(x) === 'move') ? 'move' : g.some((x) => resvState(x) === 'pend') ? 'pend' : 'ok';
-          chips.push(`<button class="rchip st-${st}" data-dl="${d}" title="กดเพื่อดูทั้งหมด"><b>${ST_META[st][0]} ${esc(k)}</b><span>${g.length} รายการ · กดดูทั้งหมด</span></button>`);
+          chips.push(`<button class="rchip ${kindCls(g[0])} st-${st}" data-dl="${d}" title="กดเพื่อดูทั้งหมด"><b>${ST_META[st][0]} ${esc(k)}</b><span>${g.length} รายการ · กดดูทั้งหมด</span></button>`);
         } else for (const x of g) {
           const st = resvState(x);
-          chips.push(`<button class="rchip st-${st} ${x.requested_by === INIT.me.user_id ? 'mine' : ''}" data-r="${esc(x.reservation_id)}" title="${esc(`${resvLabel(x)} · ${x.start}–${x.end} · ${x.room} · ${ST_META[st][1]}`)}"><b>${ST_META[st][0]} ${esc(x.course_code || resvLabel(x))}</b><span>${x.start}–${x.end} · ${esc(shortRoom(x.room))}</span></button>`);
+          chips.push(`<button class="rchip ${kindCls(x)} st-${st} ${x.requested_by === INIT.me.user_id ? 'mine' : ''}" data-r="${esc(x.reservation_id)}" title="${esc(`${resvLabel(x)} · ${x.start}–${x.end} · ${x.room} · ${ST_META[st][1]}`)}"><b>${ST_META[st][0]} ${esc(x.course_code || resvLabel(x))}</b><span>${x.start}–${x.end} · ${esc(shortRoom(x.room))}</span></button>`);
         }
       }
       const aw = away.filter((a) => a.from_date <= d && a.to_date >= d);
