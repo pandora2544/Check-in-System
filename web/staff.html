@@ -414,6 +414,7 @@
       <button class="chip on" data-f="all">ทั้งหมด</button>
       <button class="chip" data-f="live">กำลังเรียน/ถัดไป</button>
       <button class="chip" data-f="mine" id="dayMineChip">วิชาของฉัน</button>
+      <select id="dayDept" hidden aria-label="กรองตามสาขา" style="width:auto"></select>
       <span class="spacer"></span>
       <button class="chip" data-v="list">รายวิชา</button>
       <button class="chip" data-v="grid">ตารางทั้งวัน</button>
@@ -620,12 +621,14 @@ async function start() {
     $('who').innerHTML = who();
     W.init().then(() => { if (me) { $('who').innerHTML = who(); bindLogout(); } }).catch(() => {});
     W.start();
-    const bindLogout = () => $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); await sb.auth.signOut(); location.hash = ''; showLogin(); });
+    const bindLogout = () => $('logout').addEventListener('click', async (ev) => { ev.preventDefault(); deptFilter = ''; mineOnly = false; saveFilters(); await sb.auth.signOut(); location.hash = ''; showLogin(); });
     bindLogout();
     // ตัวกรองสาขา: แอดมินเลือกได้ทุกสาขา · บุคลากรเห็นเฉพาะสาขาตัวเอง (+ วิชาที่ตัวเองสอน)
     if (departments.length > 1) {
       $('deptSel').innerHTML = `<option value="">ทุกสาขา</option>` + departments.map((x) => `<option value="${esc(x.department_id)}">${esc(x.name)}</option>`).join('');
       $('deptSel').hidden = false;
+      // หน้าเช็กชื่อรายวันใช้ตัวกรองสาขาเดียวกัน — แสดงให้เห็นด้วย (เดิมกรองอยู่แต่มองไม่เห็น ทำให้ตัวเลขดูไม่ครบ)
+      $('dayDept').innerHTML = $('deptSel').innerHTML; $('dayDept').hidden = false;
     }
     assignColors(mySections.map((x) => x.course_code).filter(Boolean));
     const hasOthers = mySections.some((x) => !x.mine) && mySections.some((x) => x.mine);
@@ -678,6 +681,7 @@ $('calPrev').onclick = () => go(`#cal/${addMonths(calMonth, -1)}`);
 $('calNext').onclick = () => go(`#cal/${addMonths(calMonth, 1)}`);
 $('calToday').onclick = () => go(`#cal/${bkkToday().slice(0, 7)}`);
 $('deptSel').onchange = () => { deptFilter = $('deptSel').value; saveFilters(); openCal(calMonth); };
+$('dayDept').onchange = () => { deptFilter = $('dayDept').value; saveFilters(); dayData = null; openDay(dayDate); };
 $('mineChip').onclick = () => { mineOnly = !mineOnly; saveFilters(); renderCal(); };
 
 async function openCal(ym) {
@@ -767,6 +771,7 @@ async function openDay(date, silent = false) {
     $('dayTitle').textContent = innerWidth < 640 ? thDayShort(date) : thDay(date);
     if (dayData?.date !== date) { $('dayList').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('dayGrid').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('dayTiles').innerHTML = ''; expanded = new Set(); }
     if (date === bkkToday() && dayFilter === 'all') { /* วันนี้: คงตัวกรองเดิม */ }
+    $('dayDept').value = deptFilter; $('dayDept').classList.toggle('on', !!deptFilter);
   }
   try {
     const d = await staffApi('day', { date, department_id: deptFilter || undefined });
