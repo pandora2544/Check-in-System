@@ -256,3 +256,13 @@ from (select schedule_id from public.schedules where section_id = 'e0000000-0000
 cross join (values ('b0000000-0000-4000-8000-000067010037'::uuid, 'ป่วยเป็นไข้หวัดใหญ่ แนบใบรับรองแพทย์ภายหลัง'), ('b0000000-0000-4000-8000-000067010042'::uuid, 'ไปแข่งขันกีฬามหาวิทยาลัย')) p(id, reason)
 where not exists (select 1 from public.leave_requests l where l.schedule_id = s.schedule_id and l.student_id = p.id);
 commit;
+
+-- ===================== ส่วนที่ 6: เติมกลุ่มเดิม CHM102L-01 (e..03) / BIO102L-01 (e..04) ให้สมจริง =====================
+-- (เดิมมีนักศึกษา 3–5 คน ไม่มีเช็คชื่อ) → ลงทะเบียนเพิ่ม + ผลเช็คชื่อคาบที่ผ่านมา (สูตรเดียวกับส่วนที่ 4) + เปิดตัดขาดอัตโนมัติ
+update public.lab_sections set auto_absent = true where section_id in ('e0000000-0000-4000-8000-000000000003','e0000000-0000-4000-8000-000000000004');
+insert into public.section_enrollments (section_id, student_id, work_group)
+select e.sec::uuid, ('b0000000-0000-4000-8000-0000670100' || lpad(n::text, 2, '0'))::uuid, 'กลุ่ม ' || (1 + n % 6)
+from (values ('e0000000-0000-4000-8000-000000000003', 1, 20), ('e0000000-0000-4000-8000-000000000004', 49, 60), ('e0000000-0000-4000-8000-000000000004', 1, 8)) e(sec, a, b)
+cross join generate_series(1, 60) n where n between e.a and e.b
+on conflict (section_id, student_id) do nothing;
+-- ผลเช็คชื่อ: ใช้ insert ของส่วนที่ 4 โดยเปลี่ยนเงื่อนไขคาบเป็น section_id in (e..03, e..04) และคาบที่จบแล้ว
