@@ -361,3 +361,25 @@ body.wide .wrap{ max-width:1240px; }
 .bk-more{ margin-top:16px; border-top:1px solid var(--line); padding-top:12px; }
 .bk-more summary{ cursor:pointer; font-weight:700; font-size:14.5px; }
 .bk-foot{ margin-top:16px; gap:8px; }
+
+/* ---------- ปฏิทินของฉัน: แถบ "งานที่ต้องทำ" + ตัวกรอง (14 ต.ค. 2569) ---------- */
+.todo{ background:#fff; border:1px solid var(--line); border-radius:12px; margin:0 0 10px; overflow:hidden; }
+.todo.has-od{ border-color:var(--brick); }
+.todo-h{ display:flex; align-items:center; gap:8px; width:100%; font-family:inherit; font-size:14px; background:none; border:none; padding:9px 12px; cursor:pointer; color:var(--ink); text-align:left; }
+.todo-h:hover{ background:var(--paper); }
+.todo-list{ border-top:1px solid var(--line); max-height:280px; overflow:auto; }
+.todo-i{ display:flex; align-items:flex-start; gap:10px; padding:8px 12px; border-top:1px solid var(--line); }
+.todo-i:first-child{ border-top:none; }
+.todo-i.od{ background:#FFF7F6; }
+.todo-i .chk{ flex:none; margin-top:2px; }
+.todo-t{ flex:1; min-width:0; font-family:inherit; text-align:left; background:none; border:none; padding:0; cursor:pointer; color:var(--ink); }
+.todo-t b{ display:block; font-size:14px; font-weight:600; }
+.todo-t span{ display:block; font-size:12px; color:var(--ink-muted); margin-top:1px; }
+.todo-t:hover b{ text-decoration:underline; }
+#myLayers{ margin:0; }
+.lsep{ width:1px; height:20px; background:var(--line); margin:0 2px; }
+.agi .tm .chk{ width:20px; height:20px; font-size:12px; vertical-align:-4px; margin-right:2px; }
+.agi.done .tt{ text-decoration:line-through; color:var(--ink-muted); }
+.stmode{ margin:0 0 12px; flex-wrap:wrap; }
+.stmode button{ padding:8px 12px; font-size:13px; }
+.stmode small{ font-weight:500; opacity:.75; margin-left:3px; }

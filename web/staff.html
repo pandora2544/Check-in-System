@@ -316,6 +316,14 @@
 
   <!-- ตั้งค่าเทอมล่วงหน้า: ห้อง/วันหยุด → วันเวลาเรียน → บทปฏิบัติการ → แผนรายคาบ (ก่อนนำเข้ารายชื่อ) -->
   <section id="viewSetup" hidden>
+    <div class="segc stmode" id="stMode"><button data-m="#setup">📚 รายวิชาและตาราง <small>รายเทอม</small></button><button data-m="#agreement">🤝 ข้อตกลงภาระงาน <small>รายปีงบประมาณ</small></button></div>
+    <div class="card soon" id="stAgree" hidden>
+      <div class="soon-ic">🤝</div>
+      <h2>ข้อตกลงภาระงาน (Agreement)</h2>
+      <p class="muted">ตั้งเป้าชั่วโมงแต่ละด้านของปีงบประมาณ (ต.ค.–ก.ย.) ตามแม่แบบตำแหน่ง — ใช้เป็นค่าตั้งต้นที่หน้า "ภาระงาน" นำไปเทียบกับชั่วโมงที่ทำจริงจากปฏิทิน</p>
+      <span class="soon-tag">เร็วๆ นี้ · รอสร้างโครงข้อมูลภาระงาน</span>
+    </div>
+    <div id="stCourses">
     <div class="rbar">
       <label style="margin:0">เทอม</label>
       <select id="stTermSel"></select>
@@ -383,12 +391,12 @@
       <div class="err" id="stErr"></div>
     </div>
     <div class="err" id="setupErr"></div>
+    </div><!-- /#stCourses -->
   </section>
 
-  <!-- ระยะ 1: ปฏิทินของฉัน · ห้อง · งาน · รออนุมัติ (lib/work.js) -->
+  <!-- ระยะ 1: ปฏิทินของฉัน (รวมงาน/นัดหมาย) · ห้อง · รออนุมัติ (lib/work.js) -->
   <section id="viewMy" hidden></section>
   <section id="viewRooms" hidden></section>
-  <section id="viewTasks" hidden></section>
   <section id="viewInbox" hidden></section>
 
   <!-- คาบทั้งหมดของวัน -->
@@ -530,14 +538,14 @@ async function staffApi(action, extra = {}, fn = 'staff') {
 }
 
 // ---- เมนูหลัก 6 ระบบ + แท็บย่อย ----
-// แท็บ: [รหัส, ชื่อ, ลิงก์, ป้ายตัวเลข] · ลิงก์เดิม (#my #rooms/* #tasks #inbox #cal #setup #roster) ยังใช้ได้ทั้งหมด
-const MENUS = {
-  work: [['my', '🗓️ ปฏิทิน', '#my'], ['tasks', '✅ งานของฉัน', '#tasks', 'tasks'], ['workload', '⏱️ ภาระงาน', '#workload'], ['setup', '⚙️ ตั้งค่าเทอม', '#setup']],
+// แท็บ: [รหัส, ชื่อ, ลิงก์, ป้ายตัวเลข] · ลิงก์เดิม (#my #rooms/* #tasks #inbox #cal #setup #roster) ยังใช้ได้ทั้งหมด (#tasks → ปฏิทิน)
+const MENUS = { // ตารางงาน = ปฏิทิน (ของฉัน: คาบ งาน นัดหมาย การจองของฉัน) · ภาระงาน · ตั้งค่า (รายวิชา/ตาราง + ข้อตกลงภาระงาน)
+  work: [['my', '🗓️ ปฏิทิน', '#my', 'tasks'], ['workload', '⏱️ ภาระงาน', '#workload'], ['setup', '⚙️ ตั้งค่า', '#setup']],
   rooms: [['board', '🗓️ ปฏิทินห้อง', '#rooms/board'], ['status', '📋 คำขอและสถานะ', '#rooms/status', 'rooms']],
   check: [['cal', '📅 เช็คชื่อรายวัน', '#cal'], ['roster', '👥 รายชื่อนักศึกษา', '#roster'], ['leave', '📝 คำขอลา', '#leave', 'lv']],
 };
 const SOON = {
-  workload: ['⏱️', 'ภาระงาน', 'วางแผนและบันทึกภาระงานตาม Agreement / Achievement แล้วดูผลบนปฏิทินตารางงาน'],
+  workload: ['⏱️', 'ภาระงาน', 'คำนวณชั่วโมงภาระงานจากคาบ งาน และนัดหมายในปฏิทิน เทียบกับข้อตกลง (Agreement) แต่ละด้าน แยกรายไตรมาส และเตือนด้านที่ชั่วโมงยังไม่พอ'],
   stock: ['📦', 'คลังวัสดุสิ้นเปลือง-ครุภัณฑ์', 'ทะเบียนวัสดุและครุภัณฑ์ ที่เก็บ รหัสตู้ และการเบิก-ยืม-คืน'],
   sheet: ['🧪', 'ออกใบงานแลป', 'ออกใบงานจากหัวข้อแลปของแต่ละคาบ พร้อมรายการวัสดุที่ต้องเตรียม'],
   cost: ['💰', 'สรุปต้นทุน', 'สรุปต้นทุนวัสดุและเวลาต่อรายวิชา ต่อคาบ และต่อนักศึกษา'],
@@ -546,7 +554,9 @@ const SOON = {
 function whereAmI() {
   const [kind, arg] = location.hash.replace(/^#/, '').split('/');
   if (kind === '' || kind === 'my') return ['work', 'my'];
-  if (kind === 'tasks' || kind === 'setup' || kind === 'workload') return ['work', kind];
+  if (kind === 'tasks') return ['work', 'my'];
+  if (kind === 'setup' || kind === 'agreement') return ['work', 'setup'];
+  if (kind === 'workload') return ['work', kind];
   if (kind === 'rooms') return ['rooms', ['status', 'queue', 'mine', 'moves', 'term', 'away', 'history'].includes(arg) ? 'status' : 'board'];
   if (kind === 'inbox') return ['rooms', 'status'];
   if (kind === 'roster') return ['check', 'roster'];
@@ -576,7 +586,7 @@ function openSoon(key) {
 }
 
 function show(view) {
-  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup', 'viewMy', 'viewRooms', 'viewTasks', 'viewInbox', 'viewSoon'].forEach((v) => ($(v).hidden = v !== view));
+  ['viewLogin', 'viewCal', 'viewDay', 'viewSession', 'viewRoster', 'viewSetup', 'viewMy', 'viewRooms', 'viewInbox', 'viewSoon'].forEach((v) => ($(v).hidden = v !== view));
   const out = view === 'viewLogin';
   $('mainNav').hidden = out;
   $('shell').classList.toggle('out', out);
@@ -636,7 +646,8 @@ function route() {
   const third = location.hash.split('/')[2] || null;
   if (kind === 'my' || kind === '') return W.openMy(arg || null, third);
   if (kind === 'rooms') return W.openRooms(arg || 'board', third, location.hash.split('/')[3] || null);
-  if (kind === 'tasks') return W.openTasks();
+  if (kind === 'tasks') { history.replaceState(null, '', '#my'); return W.openMy(null, null, { todo: true }); } // ลิงก์เดิม "งานของฉัน" → ปฏิทิน + แถบงานที่ต้องทำ
+  if (kind === 'agreement') return openAgreement();
   if (kind === 'inbox') return location.replace('#rooms/status/queue'); // ลิงก์เดิม (เช่น จาก Telegram) → คำขอและสถานะ
   if (kind === 'leave') return W.openInbox('leave');
   if (SOON[kind]) return openSoon(kind);
@@ -1557,8 +1568,14 @@ const WDL = ['', 'จันทร์', 'อังคาร', 'พุธ', 'พ�
 const WDS = ['', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'];
 let stTerm = null, stSections = [], st = null; // st = ข้อมูลกลุ่มเรียนที่เปิดอยู่
 
+function setupMode(agree) {
+  $('stAgree').hidden = !agree; $('stCourses').hidden = agree;
+  $('stMode').querySelectorAll('button').forEach((b) => b.classList.toggle('on', (b.dataset.m === '#agreement') === agree));
+}
+$('stMode').querySelectorAll('button').forEach((b) => (b.onclick = () => go(b.dataset.m)));
+function openAgreement() { show('viewSetup'); setupMode(true); }
 async function openSetup(semesterId, sectionId) {
-  show('viewSetup'); $('setupErr').textContent = '';
+  show('viewSetup'); setupMode(false); $('setupErr').textContent = '';
   try {
     if (!boot) boot = await manageApi('bootstrap');
     const isAdmin = boot.user.role === 'admin';

@@ -199,18 +199,21 @@
   // ปฏิทินของฉัน
   // =====================================================================
   const LAYERS = [
-    ['sessions', 'คาบเรียน', '#3C6E58'], ['tasks', 'งาน', '#C68A2E'], ['bookings', 'จองห้อง', '#2F5F8F'],
+    ['sessions', 'คาบเรียน', '#3C6E58'], ['tasks', 'งาน/นัดหมาย', '#C68A2E'], ['bookings', 'การจองห้องของฉัน', '#2F5F8F'],
     ['holidays', 'วันหยุด', '#B23A2E'], ['leaves', 'ไม่อยู่/ลา', '#6E5FA8'],
   ];
-  const cal = { view: 'week', anchor: null, show: 'mine', people: [], rooms: [], courses: [], layers: LAYERS.map((l) => l[0]), items: [], pick: false, seq: 0, loaded: false };
-  const itemColor = (it) => it.type === 'session' ? courseColor(it.course_code || '?') : it.type === 'task' ? '#C68A2E' : it.type === 'booking' ? '#2F5F8F' : it.type === 'holiday' ? '#B23A2E' : '#6E5FA8';
-  const FLAG = { no_room: ['fl-noroom', 'ไม่มีห้อง'], room_pending: ['fl-pend', 'รอห้อง'], makeup: ['fl-mk', 'ชดเชย'], overdue: ['fl-od', 'เลยกำหนด'], pending: ['fl-pend', 'รออนุมัติ'], private: ['fl-mk', '🔒'] };
+  const cal = { view: 'week', anchor: null, show: 'mine', assigned: true, showDone: true, layers: LAYERS.map((l) => l[0]), items: [], seq: 0, loaded: false, todoOpen: true };
+  // ปฏิทินของฉัน (ตกลง 14 ต.ค. 2569): เห็นของตัวเองเท่านั้น · รวมเมนู "งานของฉัน" เดิมไว้ที่นี่ (แถบงานที่ต้องทำ)
+  const MEETING = '#0E7490';
+  const isMeeting = (it) => it.type === 'task' && it.ref?.task_type === 'meeting';
+  const itemColor = (it) => it.type === 'session' ? courseColor(it.course_code || '?') : isMeeting(it) ? MEETING : it.type === 'task' ? '#C68A2E' : it.type === 'booking' ? '#2F5F8F' : it.type === 'holiday' ? '#B23A2E' : '#6E5FA8';
+  const FLAG = { no_room: ['fl-noroom', 'ไม่มีห้อง'], room_pending: ['fl-pend', 'รอห้อง'], makeup: ['fl-mk', 'ชดเชย'], overdue: ['fl-od', 'เลยกำหนด'], pending: ['fl-pend', 'รออนุมัติ'], private: ['fl-mk', '🔒'], assigned: ['fl-mk', 'ฉันมอบหมาย'] };
   const flagHtml = (it) => (it.flags || []).filter((f) => FLAG[f]).map((f) => `<em class="fl ${FLAG[f][0]}">${FLAG[f][1]}</em>`).join('');
 
   function saveCalSettings() {
     clearTimeout(saveCalSettings.t);
     saveCalSettings.t = setTimeout(() => {
-      wApi('cal_settings_save', { settings: { show: cal.show, people: cal.people, rooms: cal.rooms, courses: cal.courses, layers: cal.layers, view: cal.view } }).catch(() => {});
+      wApi('cal_settings_save', { settings: { show: 'mine', layers: cal.layers, view: cal.view, assigned: cal.assigned, show_done: cal.showDone } }).catch(() => {});
     }, 700);
   }
 
@@ -254,14 +257,11 @@
         <div class="segc" id="myView"><button data-v="day">วัน</button><button data-v="week">สัปดาห์</button><button data-v="month">เดือน</button><button data-v="agenda">รายการ</button></div>
         <button class="btn btn-primary btn-sm" id="myNew" data-menu-anchor>+ สร้าง</button>
       </div>
+      <div class="todo" id="myTodo"></div>
       <div class="wbar">
-        <span class="muted">แสดง</span>
-        <div class="segc" id="myShow"><button data-s="mine">ของฉัน</button><button data-s="selected">ของฉัน + ที่เลือก</button><button data-s="all">ทั้งหมด</button></div>
-        <button class="btn btn-ghost btn-sm" id="myPickBtn">เลือกคน/ห้อง/วิชา</button>
+        <div class="layers" id="myLayers"></div>
         <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="myTw" title="ปรับช่วงเวลาที่แสดง"></button><span class="muted" id="myCount"></span>
       </div>
-      <div class="pickpanel" id="myPick" hidden></div>
-      <div class="layers" id="myLayers"></div>
       <div id="myBody"><div class="skel"></div></div>
       <div class="err" id="myErr"></div>
       <button class="fab" id="myFab" aria-label="สร้าง" data-menu-anchor>+</button>`;
@@ -269,11 +269,6 @@
     $('myNext').onclick = () => go(myHash(cal.view, calStep(1)));
     $('myToday').onclick = () => go(myHash(cal.view, bkkToday()));
     $('myView').querySelectorAll('button').forEach((b) => (b.onclick = () => { cal.view = b.dataset.v; saveCalSettings(); go(myHash(b.dataset.v, cal.anchor)); }));
-    $('myShow').querySelectorAll('button').forEach((b) => (b.onclick = () => {
-      cal.show = b.dataset.s; if (cal.show === 'selected' && !cal.people.length && !cal.rooms.length && !cal.courses.length) cal.pick = true;
-      saveCalSettings(); renderMyChrome(); loadMy();
-    }));
-    $('myPickBtn').onclick = () => { cal.pick = !cal.pick; renderMyChrome(); };
     $('myTw').onclick = () => twDialog(() => { renderMyChrome(); renderMyBody(); });
     const newMenu = (e) => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -286,61 +281,43 @@
 
   function renderMyChrome() {
     $('myView').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === cal.view));
-    $('myShow').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.s === cal.show));
     $('myTw').hidden = !(cal.view === 'day' || cal.view === 'week');
     $('myTw').textContent = twLabel();
-    const nSel = cal.people.length + cal.rooms.length + cal.courses.length;
-    $('myPickBtn').textContent = `เลือกคน/ห้อง/วิชา${nSel ? ` (${nSel})` : ''} ${cal.pick ? '▴' : '▾'}`;
-    $('myPickBtn').hidden = cal.show !== 'selected';
-    $('myPick').hidden = !(cal.pick && cal.show === 'selected');
-    if (!$('myPick').hidden) renderPicker();
     $('myLayers').innerHTML = LAYERS.map(([k, t, c]) => `<button class="layer ${cal.layers.includes(k) ? 'on' : ''}" data-l="${k}"><i style="background:${c}"></i>${t}</button>`).join('')
-      + `<span class="muted" style="margin-left:6px">เส้นประ = ของคนอื่น · ขอบทึบ = ของฉัน</span>`;
+      + `<span class="lsep"></span><button class="layer ${cal.assigned ? 'on' : ''}" data-f="assigned" title="งานที่ฉันสั่งให้คนอื่นทำ (เส้นประ)"><i style="background:#8a8f8c"></i>งานที่ฉันมอบหมาย</button>`
+      + `<button class="layer ${cal.showDone ? 'on' : ''}" data-f="done"><i style="background:#3C8C65"></i>แสดงงานที่เสร็จแล้ว</button>`;
     $('myLayers').querySelectorAll('[data-l]').forEach((b) => (b.onclick = () => {
       const k = b.dataset.l; cal.layers = cal.layers.includes(k) ? cal.layers.filter((x) => x !== k) : [...cal.layers, k];
       saveCalSettings(); renderMyChrome(); loadMy();
     }));
+    $('myLayers').querySelector('[data-f="assigned"]').onclick = () => { cal.assigned = !cal.assigned; saveCalSettings(); renderMyChrome(); loadMy(); };
+    $('myLayers').querySelector('[data-f="done"]').onclick = () => { cal.showDone = !cal.showDone; saveCalSettings(); renderMyChrome(); renderMyBody(); };
     const r = calRange();
     $('myTitle').textContent = cal.view === 'day' ? fmtLong(r.from)
       : cal.view === 'month' ? thMonthOf(r.ym + '-15')
       : `${fmtD(r.from, { weekday: undefined })} – ${fmtD(r.to, { weekday: undefined, year: 'numeric' })}`;
   }
 
-  function renderPicker() {
-    const box = $('myPick');
-    const col = (key, title, rows) => `<div><h4>${title}</h4><input type="search" placeholder="ค้นหา…" data-f="${key}">
-      <div class="picklist" data-k="${key}">${rows.map((r) => `<label class="pick" data-s="${esc((r.label + ' ' + (r.sub || '')).toLowerCase())}"><input type="checkbox" value="${esc(r.id)}" ${cal[key].includes(r.id) ? 'checked' : ''}> <span>${esc(r.label)} ${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</span></label>`).join('')}</div></div>`;
-    box.innerHTML =
-      col('people', '👤 บุคลากร', INIT.people.filter((p) => !p.is_me).map((p) => ({ id: p.user_id, label: p.full_name, sub: p.position }))) +
-      col('rooms', '🏫 ห้อง', INIT.rooms.map((r) => ({ id: r.location_id, label: r.name, sub: [r.room_code, r.zone].filter(Boolean).join(' · ') }))) +
-      col('courses', '📚 รายวิชา', uniqBy(INIT.courses, 'course_id').map((c) => ({ id: c.course_id, label: c.course_code, sub: c.course_name })));
-    box.querySelectorAll('[data-f]').forEach((inp) => (inp.oninput = () => {
-      const q = inp.value.trim().toLowerCase();
-      box.querySelectorAll(`[data-k="${inp.dataset.f}"] .pick`).forEach((l) => (l.hidden = q && !l.dataset.s.includes(q)));
-    }));
-    box.querySelectorAll('.picklist').forEach((list) => list.querySelectorAll('input').forEach((c) => (c.onchange = () => {
-      const k = list.dataset.k;
-      cal[k] = [...list.querySelectorAll('input:checked')].map((x) => x.value);
-      saveCalSettings(); renderMyChrome(); loadMy();
-    })));
-  }
   const uniqBy = (arr, k) => { const s = new Set(); return arr.filter((x) => (s.has(x[k]) ? false : s.add(x[k]))); };
 
-  W.openMy = async (view, date) => {
+  W.openMy = async (view, date, opts = {}) => {
     show('viewMy');
     buildMySkeleton();
     try { await W.init(); } catch (e) { $('myErr').textContent = e.message; return; }
     if (!cal.loaded) {
       const s = INIT.calendar_settings || {};
-      cal.show = s.show || 'mine'; cal.people = s.people || []; cal.rooms = s.rooms || []; cal.courses = s.courses || [];
+      cal.show = 'mine'; cal.assigned = s.assigned !== false; cal.showDone = s.show_done !== false;
+      try { cal.todoOpen = localStorage.getItem('csl_todo_open') !== '0'; } catch { /* ไม่มี storage */ }
       cal.layers = Array.isArray(s.layers) && s.layers.length ? s.layers : cal.layers;
       cal.view = s.view || (narrow() ? 'agenda' : 'week');
       cal.loaded = true;
     }
     if (['day', 'week', 'month', 'agenda'].includes(view)) cal.view = view;
     cal.anchor = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : (cal.anchor || bkkToday());
+    if (opts.todo) cal.todoOpen = true;
     renderMyChrome();
     loadMy();
+    loadTodo();
   };
 
   async function loadMy() {
@@ -348,15 +325,50 @@
     $('myErr').textContent = '';
     $('myBody').classList.add('loading');
     try {
-      const d = await wApi('cal_feed', { from: r.from, to: r.to, show: cal.show, people: cal.people, rooms: cal.rooms, courses: cal.courses, layers: cal.layers });
+      const d = await wApi('cal_feed', { from: r.from, to: r.to, show: 'mine', assigned: cal.assigned, layers: cal.layers });
       if (seq !== cal.seq) return;
       cal.items = d.items;
-      $('myCount').textContent = `${d.counts.total} รายการ${cal.show !== 'mine' ? ` · ของฉัน ${d.counts.mine}` : ''}`;
+      $('myCount').textContent = `${d.counts.total} รายการ`;
       renderMyBody();
     } catch (e) { if (seq === cal.seq) $('myErr').textContent = e.message; }
     finally { if (seq === cal.seq) $('myBody').classList.remove('loading'); }
   }
-  W.reloadMy = () => { if (!$('viewMy').hidden) loadMy(); };
+  W.reloadMy = () => { if (!$('viewMy').hidden) { loadMy(); loadTodo(); } };
+
+  // ---------- แถบ "งานที่ต้องทำ" (เลยกำหนด + วันนี้) — แสดงทุกมุมมอง ติ๊กเสร็จได้ทันที ----------
+  async function loadTodo() {
+    const box = $('myTodo');
+    if (!box) return;
+    const today = bkkToday();
+    try {
+      const d = await wApi('task_list', { scope: 'mine', from: addDays(today, -365), to: today, todo_only: true });
+      const list = d.tasks.filter((t) => t.status === 'todo').sort((a, b) => (b.overdue - a.overdue) || a.task_date.localeCompare(b.task_date) || String(a.start_time ?? '').localeCompare(String(b.start_time ?? '')));
+      const od = list.filter((t) => t.overdue).length;
+      box.className = `todo ${cal.todoOpen ? 'open' : ''} ${od ? 'has-od' : ''}`;
+      box.innerHTML = `<button class="todo-h" data-tog><b>☑ งานที่ต้องทำ</b>
+          <span class="tag ${list.length ? 'amber' : 'teal'}">${list.length ? `${list.length} งาน` : 'ไม่มีงานค้าง 🎉'}</span>${od ? `<span class="tag red">เลยกำหนด ${od}</span>` : ''}
+          <span class="spacer"></span><span class="muted">${cal.todoOpen ? 'ย่อ ▴' : 'ดู ▾'}</span></button>
+        ${cal.todoOpen && list.length ? `<div class="todo-list">${list.map((t) => `<div class="todo-i ${t.overdue ? 'od' : ''}">
+          <button class="chk" data-done="${esc(t.task_id)}" ${t.can_edit ? '' : 'disabled'} aria-label="ทำเสร็จ"></button>
+          <button class="todo-t" data-open="${esc(t.task_id)}"><b>${esc(t.title)}</b>
+            <span>${t.overdue ? `<em class="fl fl-od">เลยกำหนด ${fmtD(t.task_date)}</em> ` : 'วันนี้ '}${t.start_time ? `<span class="mono">${t.start_time}</span> ` : ''}${esc([t.task_type_th, t.course_code, t.created_by !== INIT.me.user_id && t.created_by_name ? `มอบหมายโดย ${t.created_by_name}` : ''].filter(Boolean).join(' · '))}</span></button></div>`).join('')}</div>` : ''}`;
+      box.querySelector('[data-tog]').onclick = () => { cal.todoOpen = !cal.todoOpen; try { localStorage.setItem('csl_todo_open', cal.todoOpen ? '1' : '0'); } catch { /* ข้าม */ } loadTodo(); };
+      box.querySelectorAll('[data-done]').forEach((b) => (b.onclick = () => busy(b, async () => {
+        try { await wApi('task_status', { task_id: b.dataset.done, status: 'done' }); toast('เสร็จแล้ว ✓'); afterChange(); } catch (e) { toast(e.message); }
+      })));
+      box.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => {
+        const t = list.find((x) => x.task_id === b.dataset.open);
+        taskForm({ task_id: t.task_id, title: t.title, task_type: t.task_type, task_date: t.task_date, start_time: t.start_time || '', duration_hours: t.duration_hours, assignee_id: t.assignee_id, is_private: t.is_private, note: t.note, place: t.place, course_id: t.course_id });
+      }));
+    } catch (e) { box.className = 'todo'; box.innerHTML = `<div class="muted">โหลดงานที่ต้องทำไม่ได้: ${esc(e.message)}</div>`; }
+  }
+  // ติ๊กเสร็จ/ยกเลิกเสร็จจากปฏิทิน (มุมมองรายการ)
+  async function toggleTask(it, btn) {
+    await busy(btn, async () => {
+      try { await wApi('task_status', { task_id: it.ref.task_id, status: it.status === 'done' ? 'todo' : 'done' }); toast(it.status === 'done' ? 'กลับเป็นต้องทำ' : 'เสร็จแล้ว ✓'); afterChange(); }
+      catch (e) { toast(e.message); }
+    });
+  }
 
   const coversDay = (it, d) => it.date === d || (it.end_date && it.date <= d && it.end_date >= d);
 
@@ -388,7 +400,7 @@
   }
 
   function renderMyBody() {
-    cal.view_items = groupSessions(cal.items);
+    cal.view_items = groupSessions(cal.showDone ? cal.items : cal.items.filter((i) => !(i.type === 'task' && i.status === 'done')));
     const r = calRange();
     if (cal.view === 'month') renderMonth(r);
     else if (cal.view === 'agenda') renderAgenda(r);
@@ -399,7 +411,7 @@
   function renderTimeGrid(r) {
     const days = r.days, today = bkkToday(), items = cal.view_items;
     const isAllDay = (i) => !i.start || i.type === 'holiday' || i.type === 'away';
-    const tick = (i) => (i.type === 'task' ? (i.status === 'done' ? '✓ ' : '☐ ') : '');
+    const tick = (i) => (isMeeting(i) ? '📅 ' : i.type === 'task' ? (i.status === 'done' ? '✓ ' : '☐ ') : '');
     const rows = days.map((d) => {
       const hol = items.find((i) => i.type === 'holiday' && coversDay(i, d));
       const ad = items.filter((i) => isAllDay(i) && i.type !== 'holiday' && coversDay(i, d));
@@ -413,7 +425,7 @@
           const flags = (i.flags || []).filter((f) => FLAG[f]).map((f) => FLAG[f][1]).join(' ');
           return {
             id: i.id, s, e, title: `${tick(i)}${i.title}`,
-            line: [`${i.start}${i.end ? '–' + i.end : ''}`, i.room, flags].filter(Boolean).join(' · '),
+            line: [`${i.start}${i.end ? '–' + i.end : ''}`, i.room, i.who && `👤 ${i.who}`, flags].filter(Boolean).join(' · '),
             tip: [i.title, `${i.start}${i.end ? '–' + i.end : ''}`, i.room, i.who && `👤 ${i.who}`, i.sub].filter(Boolean).join(' · '),
             cls: [i.mine ? '' : 'other', i.status === 'cancelled' ? 'cancel' : '', i.status === 'done' ? 'done' : ''].join(' '),
             style: `border-left-color:${col};background:${i.mine ? tint(col, 16) : '#fff'}`,
@@ -427,7 +439,7 @@
       onLabel: cal.view === 'week' ? (d) => go(myHash('day', d)) : null,
       onEmpty: (d, m, e) => createMenu(e.pageX, e.pageY, { date: d, start: fromMin(m), end: fromMin(Math.min(23 * 60 + 30, m + 120)) }),
       rerender: () => { renderMyChrome(); renderMyBody(); },
-      empty: items.length ? '' : `<div class="empty" style="margin-top:10px">ไม่มีรายการในช่วงนี้${cal.show === 'mine' ? ' — ลองเลือก "ของฉัน + ที่เลือก" เพื่อดูของคนอื่น' : ''}</div>`,
+      empty: items.length ? '' : '<div class="empty" style="margin-top:10px">ไม่มีรายการในช่วงนี้ — กดช่องว่างหรือ "+ สร้าง" เพื่อเพิ่มงาน/นัดหมาย</div>',
     });
     $('myBody').querySelectorAll('[data-ad]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); openItem(b.dataset.ad); }));
   }
@@ -450,7 +462,7 @@
   }
 
   // รายการ: 1 แถวต่อ 1 วัน (หน้าละ 14 วัน) — กดที่วันเพื่อกางรายละเอียด
-  const AG_TYPE = { session: ['คาบ', '#3C6E58'], task: ['งาน', '#C68A2E'], booking: ['จองห้อง', '#2F5F8F'], away: ['ไม่อยู่/ลา', '#6E5FA8'], leave: ['ไม่อยู่/ลา', '#6E5FA8'] };
+  const AG_TYPE = { session: ['คาบ', '#3C6E58'], task: ['งาน', '#C68A2E'], meeting: ['นัดหมาย', MEETING], booking: ['จองห้อง', '#2F5F8F'], away: ['ไม่อยู่/ลา', '#6E5FA8'], leave: ['ไม่อยู่/ลา', '#6E5FA8'] };
   function renderAgenda(r) {
     const today = bkkToday();
     cal.open ||= new Set([today]);
@@ -460,14 +472,15 @@
       const rest = list.filter((i) => i.type !== 'holiday').sort((a, b) => String(a.start ?? '').localeCompare(String(b.start ?? '')));
       if (!rest.length && !hol) return '';
       const counts = new Map();
-      for (const i of rest) { const [t, c] = AG_TYPE[i.type] || ['อื่น ๆ', '#888']; const k = counts.get(t) || { n: 0, c }; k.n++; counts.set(t, k); }
+      for (const i of rest) { const [t, c] = AG_TYPE[isMeeting(i) ? 'meeting' : i.type] || ['อื่น ๆ', '#888']; const k = counts.get(t) || { n: 0, c }; k.n++; counts.set(t, k); }
       const open = cal.open.has(d);
       const detail = open ? `<div class="ag-items">${rest.map((i) => {
         const col = itemColor(i);
-        return `<button class="agi ${i.mine ? '' : 'other'} ${i.status === 'cancelled' ? 'cancel' : ''}" data-id="${esc(i.id)}" style="border-left-color:${col}">
-          <span class="tm">${i.start ? `${i.start}${i.end ? '–' + i.end : ''}` : 'ทั้งวัน'}</span>
-          <span class="tt">${i.type === 'task' ? (i.status === 'done' ? '✓ ' : '☐ ') : ''}${esc(i.title)} ${flagHtml(i)}<small>${esc([i.sub, i.room, i.who && `👤 ${i.who}`].filter(Boolean).join(' · '))}</small></span>
-          <span class="side">${i.type === 'session' && i.status === 'cancelled' ? '<span class="tag red">งด</span>' : ''}${i.type === 'booking' ? statusTag(i.status) : ''}</span></button>`;
+        const canTick = i.type === 'task' && !isMeeting(i) && i.ref?.can_edit;
+        return `<div class="agi ${i.mine ? '' : 'other'} ${i.status === 'cancelled' ? 'cancel' : ''} ${i.status === 'done' ? 'done' : ''}" role="button" tabindex="0" data-id="${esc(i.id)}" style="border-left-color:${col}">
+          <span class="tm">${canTick ? `<button class="chk ${i.status === 'done' ? 'on' : ''}" data-tk="${esc(i.id)}" aria-label="ทำเสร็จ">${i.status === 'done' ? '✓' : ''}</button> ` : isMeeting(i) ? '📅 ' : ''}${i.start ? `${i.start}${i.end ? '–' + i.end : ''}` : 'ทั้งวัน'}</span>
+          <span class="tt">${esc(i.title)} ${flagHtml(i)}<small>${esc([i.sub, i.room, i.who && `👤 ${i.who}`].filter(Boolean).join(' · '))}</small></span>
+          <span class="side">${i.type === 'session' && i.status === 'cancelled' ? '<span class="tag red">งด</span>' : ''}${i.type === 'booking' ? statusTag(i.status) : ''}</span></div>`;
       }).join('') || '<div class="muted" style="padding:6px 2px">ไม่มีรายการ</div>'}</div>` : '';
       return `<div class="ag-day ${open ? 'open' : ''}"><button class="ag-row ${d === today ? 'today' : ''}" data-day="${d}">
           <span class="ag-date">${fmtD(d)}${d === today ? ' · วันนี้' : ''}</span>
@@ -480,13 +493,15 @@
     $('myBody').querySelectorAll('[data-all]').forEach((b) => (b.onclick = () => { cal.open = new Set(b.dataset.all === '1' ? r.days : []); renderAgenda(r); }));
     $('myBody').querySelectorAll('[data-pg]').forEach((b) => (b.onclick = () => go(myHash('agenda', calStep(Number(b.dataset.pg))))));
     $('myBody').querySelectorAll('.agi[data-id]').forEach((b) => (b.onclick = () => openItem(b.dataset.id)));
+    $('myBody').querySelectorAll('[data-tk]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); toggleTask(cal.items.find((x) => x.id === b.dataset.tk), b); }));
   }
 
   function createMenu(x, y, pre) {
     menu(x, y, pre.start ? `${fmtD(pre.date)} ${pre.start}` : fmtD(pre.date), [
       { label: '📝 งาน', run: () => taskForm({ task_date: pre.date, start_time: pre.start || '' }) },
-      { label: '🏫 จองห้อง', run: () => bookingForm({ date: pre.date, start: pre.start, end: pre.end }) },
+      { label: '📅 นัดหมาย/ประชุม', run: () => taskForm({ task_type: 'meeting', task_date: pre.date, start_time: pre.start || '', duration_hours: pre.start ? 1 : '' }) },
       { label: '🙈 วันที่ฉันไม่อยู่', run: () => awayForm({ from: pre.date }) },
+      ...(INIT.courses.some((c) => c.can_manage) ? [{ label: '⚙️ สร้างงานจากสิ่งที่ต้องเตรียม', run: genForm }] : []),
     ]);
   }
 
@@ -640,30 +655,30 @@
     });
   }
 
-  function afterChange() { rm.extra = null; W.reloadMy(); W.refreshBadges(); if (!$('viewRooms').hidden) loadRooms(); if (!$('viewTasks').hidden) loadTasks(); if (!$('viewInbox').hidden) loadInbox({ only: ib.only }); }
+  function afterChange() { rm.extra = null; W.reloadMy(); W.refreshBadges(); if (!$('viewRooms').hidden) loadRooms(); if (!$('viewInbox').hidden) loadInbox({ only: ib.only }); }
   W.afterChange = afterChange;
 
   // ---------- งาน ----------
   function taskDetail(it) {
-    const f = it.ref;
-    const md = modal(it.title, `
+    const f = it.ref, meet = f.task_type === 'meeting';
+    const md = modal(`${meet ? '📅 ' : ''}${it.title}`, `
       <dl class="dl">
         <dt>วัน</dt><dd>${fmtLong(it.date)}${it.start ? ` · <b class="mono">${it.start}${it.end ? '–' + it.end : ''}</b>` : ''}${f.duration_hours ? ` (${Number(f.duration_hours)} ชม.)` : ''}</dd>
         <dt>ประเภท</dt><dd>${esc(it.sub || '')}</dd>
-        ${it.room ? `<dt>ห้อง</dt><dd>${esc(it.room)}</dd>` : ''}
-        <dt>ผู้รับงาน</dt><dd>${esc(person(f.assignee_id)?.full_name || '—')}</dd>
+        ${it.room ? `<dt>${meet ? 'สถานที่' : 'ห้อง'}</dt><dd>${esc(it.room)}</dd>` : ''}
+        <dt>${meet ? 'ของ' : 'ผู้รับงาน'}</dt><dd>${esc(person(f.assignee_id)?.full_name || '—')}</dd>
         <dt>สร้างโดย</dt><dd>${esc(person(f.created_by)?.full_name || '—')}${f.source === 'rule' ? ' <span class="tag">จากสิ่งที่ต้องเตรียมต่อบท</span>' : ''}</dd>
-        <dt>สถานะ</dt><dd>${it.status === 'done' ? '<span class="tag teal">เสร็จแล้ว</span>' : it.flags.includes('overdue') ? '<span class="tag red">เลยกำหนด</span>' : '<span class="tag amber">ต้องทำ</span>'} ${f.is_private ? '<span class="tag">🔒 ส่วนตัว</span>' : ''}</dd>
+        ${meet ? '' : `<dt>สถานะ</dt><dd>${it.status === 'done' ? '<span class="tag teal">เสร็จแล้ว</span>' : it.flags.includes('overdue') ? '<span class="tag red">เลยกำหนด</span>' : '<span class="tag amber">ต้องทำ</span>'} ${f.is_private ? '<span class="tag">🔒 ส่วนตัว</span>' : ''}</dd>`}
         ${f.note ? `<dt>หมายเหตุ</dt><dd>${esc(f.note)}</dd>` : ''}
       </dl>
       ${f.can_edit ? `<div class="row" style="gap:6px">
-        <button class="btn ${it.status === 'done' ? 'btn-ghost' : 'btn-ok'} btn-sm" data-a="toggle">${it.status === 'done' ? '↩︎ ยังไม่เสร็จ' : '✓ ทำเสร็จแล้ว'}</button>
+        ${meet ? '' : `<button class="btn ${it.status === 'done' ? 'btn-ghost' : 'btn-ok'} btn-sm" data-a="toggle">${it.status === 'done' ? '↩︎ ยังไม่เสร็จ' : '✓ ทำเสร็จแล้ว'}</button>`}
         <button class="btn btn-ghost btn-sm" data-a="edit">แก้ไข</button>
         <span class="spacer"></span><button class="btn btn-ghost btn-sm" data-a="del">ลบ</button></div>` : '<div class="muted">แก้ได้เฉพาะผู้สร้าง ผู้รับงาน หรือผู้ประสานรายวิชา</div>'}`);
     md.qa('[data-a]').forEach((b) => (b.onclick = () => busy(b, async () => {
       try {
         if (b.dataset.a === 'toggle') { await wApi('task_status', { task_id: f.task_id, status: it.status === 'done' ? 'todo' : 'done' }); md.close(); afterChange(); }
-        if (b.dataset.a === 'edit') { md.close(); taskForm({ task_id: f.task_id, title: it.title, task_type: f.task_type, task_date: it.date, start_time: it.start || '', duration_hours: f.duration_hours, assignee_id: f.assignee_id, is_private: f.is_private, note: f.note, course_id: it.course_id, course_label: it.course_code }); }
+        if (b.dataset.a === 'edit') { md.close(); taskForm({ task_id: f.task_id, title: it.title, task_type: f.task_type, task_date: it.date, start_time: it.start || '', duration_hours: f.duration_hours, assignee_id: f.assignee_id, is_private: f.is_private, note: f.note, place: f.place, course_id: it.course_id, course_label: it.course_code }); }
         if (b.dataset.a === 'del') { if (!confirmInline(b)) return; await wApi('task_remove', { task_id: f.task_id }); md.close(); toast('ลบงานแล้ว'); afterChange(); }
       } catch (e) { md.err(e.message); }
     })));
@@ -681,14 +696,16 @@
     const editing = !!p.task_id;
     const myCourses = INIT.courses.filter((c) => isAdmin() || c.my_roles.length);
     const types = Object.entries(INIT.task_types);
-    const md = modal(editing ? 'แก้ไขงาน' : 'งานใหม่', `
+    const meet0 = p.task_type === 'meeting';
+    const md = modal(editing ? (meet0 ? 'แก้ไขนัดหมาย' : 'แก้ไขงาน') : (meet0 ? 'นัดหมาย/ประชุมใหม่' : 'งานใหม่'), `
       <div class="fgrid">
-        <div class="full"><label>ชื่องาน *</label><input data-k="title" value="${esc(p.title || '')}" maxlength="200" placeholder="เช่น เตรียมสารละลาย NaOH 0.1 M"></div>
+        <div class="full"><label data-lt>${meet0 ? 'เรื่อง *' : 'ชื่องาน *'}</label><input data-k="title" value="${esc(p.title || '')}" maxlength="200" placeholder="${meet0 ? 'เช่น ประชุมกรรมการห้องปฏิบัติการ' : 'เช่น เตรียมสารละลาย NaOH 0.1 M'}"></div>
         <div><label>ประเภท</label><select data-k="task_type">${types.map(([k, t]) => opt(k, t, p.task_type || 'other')).join('')}</select></div>
         <div><label>วันที่ *</label><input type="date" data-k="task_date" value="${esc(p.task_date || bkkToday())}"></div>
         <div><label>เวลาเริ่ม</label><input type="time" data-k="start_time" value="${esc(p.start_time || '')}" step="300"></div>
         <div><label>ใช้เวลา (ชม.)</label><input type="number" data-k="duration_hours" value="${esc(p.duration_hours ?? '')}" min="0.25" max="24" step="0.25" inputmode="decimal"></div>
-        <div class="full"><label>ผู้รับงาน</label><select data-k="assignee_id">${INIT.people.map((u) => opt(u.user_id, `${u.full_name}${u.is_me ? ' (ฉัน)' : ''} · ${u.position}`, p.assignee_id || INIT.me.user_id)).join('')}</select></div>
+        <div class="full" data-place ${meet0 ? '' : 'hidden'}><label>สถานที่</label><input data-k="place" value="${esc(p.place || '')}" maxlength="200" placeholder="เช่น ห้องประชุม 2 อาคาร 1 / ออนไลน์"></div>
+        <div class="full"><label data-la>${meet0 ? 'ของ' : 'ผู้รับงาน'}</label><select data-k="assignee_id">${INIT.people.map((u) => opt(u.user_id, `${u.full_name}${u.is_me ? ' (ฉัน)' : ''} · ${u.position}`, p.assignee_id || INIT.me.user_id)).join('')}</select></div>
         ${p.schedule_id ? `<div class="full"><label>ของคาบ</label><div>${esc(p.course_label || '')}</div></div>`
           : `<div class="full"><label>รายวิชา (ถ้าเป็นงานของวิชา)</label><select data-k="course">${opt('', '— งานทั่วไป / ส่วนตัว —', '')}${myCourses.map((c) => opt(`${c.course_id}|${c.semester_id}`, `${c.course_code} · ${c.course_name}`, p.course_id ? `${p.course_id}|${c.semester_id}` : '')).join('')}</select></div>`}
         <div class="full"><label class="inl"><input type="checkbox" data-k="is_private" ${p.is_private ? 'checked' : ''}> ส่วนตัว (คนอื่นไม่เห็นในปฏิทิน · ใช้ได้กับงานที่ไม่ใช่ของวิชา)</label></div>
@@ -697,6 +714,13 @@
       <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn btn-ghost" data-no>ยกเลิก</button><button class="btn btn-primary" data-ok>${editing ? 'บันทึก' : 'สร้างงาน'}</button></div>`);
     const v = (k) => md.q(`[data-k="${k}"]`);
     const syncPriv = () => { const c = v('course'); if (c) { v('is_private').disabled = !!c.value; if (c.value) v('is_private').checked = false; } };
+    const syncType = () => {
+      const meet = v('task_type').value === 'meeting';
+      md.q('[data-place]').hidden = !meet;
+      md.q('[data-lt]').textContent = meet ? 'เรื่อง *' : 'ชื่องาน *';
+      md.q('[data-la]').textContent = meet ? 'ของ' : 'ผู้รับงาน';
+    };
+    v('task_type').onchange = syncType;
     if (v('course')) { v('course').onchange = syncPriv; if (editing && p.course_id) v('course').disabled = true; }
     syncPriv();
     setTimeout(() => v('title').focus(), 30);
@@ -707,12 +731,12 @@
       const body = {
         task_id: p.task_id, title: v('title').value.trim(), task_type: v('task_type').value, task_date: v('task_date').value,
         start_time: v('start_time').value, duration_hours: v('duration_hours').value, assignee_id: v('assignee_id').value,
-        is_private: v('is_private').checked, note: v('note').value, notify_assignee: editing && v('assignee_id').value !== p.assignee_id,
+        is_private: v('is_private').checked, note: v('note').value, place: v('task_type').value === 'meeting' ? v('place').value : '', notify_assignee: editing && v('assignee_id').value !== p.assignee_id,
       };
       if (p.schedule_id) body.schedule_id = p.schedule_id;
       else if (!editing || !p.course_id) { body.course_id = course_id || ''; body.semester_id = semester_id || ''; }
-      if (!body.title) return md.err('ใส่ชื่องาน');
-      try { await wApi('task_save', body); md.close(); toast(editing ? 'บันทึกงานแล้ว' : 'สร้างงานแล้ว'); afterChange(); }
+      if (!body.title) return md.err(body.task_type === 'meeting' ? 'ใส่เรื่องของนัดหมาย' : 'ใส่ชื่องาน');
+      try { await wApi('task_save', body); md.close(); toast(body.task_type === 'meeting' ? 'บันทึกนัดหมายแล้ว' : editing ? 'บันทึกงานแล้ว' : 'สร้างงานแล้ว'); afterChange(); }
       catch (er) { md.err(er.message); }
     });
   }
@@ -1575,72 +1599,7 @@
   // =====================================================================
   // ตารางงาน
   // =====================================================================
-  const tk = { scope: 'mine', done: false };
-  W.openTasks = async () => {
-    show('viewTasks');
-    try { await W.init(); } catch (e) { $('viewTasks').innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
-    if (!$('viewTasks').dataset.built) {
-      $('viewTasks').dataset.built = '1';
-      const hasCourse = isAdmin() || INIT.courses.some((c) => c.my_roles.length);
-      const canGen = INIT.courses.some((c) => c.can_manage);
-      $('viewTasks').innerHTML = `<div class="wbar">
-        <div class="segc" id="tkScope"><button data-s="mine">ของฉัน</button><button data-s="created">ที่ฉันมอบหมาย</button>${hasCourse ? '<button data-s="course">งานในวิชาของฉัน</button>' : ''}${isAdmin() ? '<button data-s="all">ทั้งหมด</button>' : ''}</div>
-        <label class="inl" style="margin-left:6px"><input type="checkbox" id="tkDone"> แสดงที่เสร็จแล้ว</label>
-        <span class="spacer"></span>
-        ${canGen ? '<button class="btn btn-ghost btn-sm" id="tkGen">⚙️ สร้างงานจากสิ่งที่ต้องเตรียม</button>' : ''}
-        <button class="btn btn-primary btn-sm" id="tkNew">+ งาน</button></div>
-        <div id="tkList"><div class="skel" style="height:240px"></div></div><div class="err" id="tkErr"></div>`;
-      $('tkScope').querySelectorAll('button').forEach((b) => (b.onclick = () => { tk.scope = b.dataset.s; loadTasks(); }));
-      $('tkDone').onchange = () => { tk.done = $('tkDone').checked; loadTasks(); };
-      $('tkNew').onclick = () => taskForm({});
-      if ($('tkGen')) $('tkGen').onclick = genForm;
-    }
-    loadTasks();
-  };
-
-  async function loadTasks() {
-    $('tkScope').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.s === tk.scope));
-    $('tkErr').textContent = '';
-    $('tkList').classList.add('loading');
-    try {
-      const d = await wApi('task_list', { scope: tk.scope, include_done: tk.done });
-      const today = bkkToday(), tmr = addDays(today, 1);
-      const groups = new Map();
-      d.tasks.sort((a, b) => (b.overdue - a.overdue) || a.task_date.localeCompare(b.task_date) || String(a.start_time ?? '').localeCompare(String(b.start_time ?? '')));
-      for (const t of d.tasks) {
-        const g = t.overdue ? '⚠️ เลยกำหนด' : t.task_date === today ? 'วันนี้' : t.task_date === tmr ? 'พรุ่งนี้' : t.task_date < today ? `${fmtD(t.task_date)} (ผ่านแล้ว)` : fmtD(t.task_date);
-        groups.set(g, [...(groups.get(g) || []), t]);
-      }
-      $('tkList').innerHTML = d.tasks.length ? [...groups].map(([g, ts]) => `<div class="grp ${g.startsWith('⚠️') ? 'red' : ''}">${g} <span class="tag">${ts.length}</span></div>` + ts.map((t) => `
-        <div class="li ${t.status === 'done' ? 'done' : ''} ${t.overdue ? 'od' : ''}">
-          <button class="chk ${t.status === 'done' ? 'on' : ''}" data-tg="${esc(t.task_id)}" ${t.can_edit ? '' : 'disabled'} aria-label="ทำเสร็จ">${t.status === 'done' ? '✓' : ''}</button>
-          <div><div class="t">${esc(t.title)} ${t.is_private ? '🔒' : ''}</div>
-            <div class="m"><span class="tag ${t.task_type === 'prep' ? 'amber' : t.task_type === 'supervise' ? 'teal' : ''}">${esc(t.task_type_th)}</span>
-            ${[t.overdue && fmtD(t.task_date), t.start_time && `<span class="mono">${t.start_time}</span>`, t.duration_hours && `${Number(t.duration_hours)} ชม.`,
-              t.course_code && esc(t.course_code + (t.session ? ` ก.${t.session.section_no} คาบ ${fmtD(t.session.class_date)} ${t.session.start_time} · ${t.session.room || ''}` : '')),
-              tk.scope !== 'mine' ? `👤 ${esc(t.assignee_name || '')}` : (t.created_by !== INIT.me.user_id && t.created_by_name ? `มอบหมายโดย ${esc(t.created_by_name)}` : ''),
-              t.handed_over_from_name && `รับต่อจาก ${esc(t.handed_over_from_name)}`, t.done_by_name && `เสร็จโดย ${esc(t.done_by_name)}`].filter(Boolean).join(' · ')}
-            ${t.note ? `<br>${esc(t.note)}` : ''}</div></div>
-          <div class="acts">${t.can_edit ? `<button class="btn btn-ghost btn-sm" data-ed="${esc(t.task_id)}">แก้ไข</button><button class="btn btn-ghost btn-sm" data-rm="${esc(t.task_id)}">ลบ</button>` : ''}</div></div>`).join('')).join('')
-        : `<div class="empty">${tk.scope === 'mine' ? 'ไม่มีงานค้าง 🎉' : 'ไม่มีงาน'}</div>`;
-      const find = (id) => d.tasks.find((t) => t.task_id === id);
-      $('tkList').querySelectorAll('[data-tg]').forEach((b) => (b.onclick = () => busy(b, async () => {
-        const t = find(b.dataset.tg);
-        try { await wApi('task_status', { task_id: t.task_id, status: t.status === 'done' ? 'todo' : 'done' }); toast(t.status === 'done' ? 'กลับเป็นต้องทำ' : 'เสร็จแล้ว ✓'); afterChange(); }
-        catch (e) { $('tkErr').textContent = e.message; }
-      })));
-      $('tkList').querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => {
-        const t = find(b.dataset.ed);
-        taskForm({ task_id: t.task_id, title: t.title, task_type: t.task_type, task_date: t.task_date, start_time: t.start_time || '', duration_hours: t.duration_hours, assignee_id: t.assignee_id, is_private: t.is_private, note: t.note, course_id: t.course_id });
-      }));
-      $('tkList').querySelectorAll('[data-rm]').forEach((b) => (b.onclick = () => busy(b, async () => {
-        if (!confirmInline(b)) return;
-        try { await wApi('task_remove', { task_id: b.dataset.rm }); toast('ลบงานแล้ว'); afterChange(); } catch (e) { $('tkErr').textContent = e.message; }
-      })));
-    } catch (e) { $('tkErr').textContent = e.message; }
-    finally { $('tkList').classList.remove('loading'); }
-  }
-
+  // เมนู "งานของฉัน" เดิมรวมเข้าปฏิทินแล้ว (14 ต.ค. 2569) — แถบงานที่ต้องทำ + ติ๊กเสร็จในมุมมองรายการ
   function genForm() {
     const cs = INIT.courses.filter((c) => c.can_manage);
     const md = modal('สร้างงานจาก "สิ่งที่ต้องเตรียมต่อบท"', `

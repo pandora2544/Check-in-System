@@ -5,10 +5,11 @@
 //
 // actions:
 //   init                                  ผู้ใช้ + หน้าที่ (งานมอบหมาย) + รายชื่อบุคลากร/ห้อง/วิชา (ใช้ทำตัวเลือก) + ตั้งค่าปฏิทิน
-//   cal_feed     { from, to, show?, people?, rooms?, courses?, layers? }   รายการในปฏิทิน (คาบ งาน จองห้อง วันหยุด ไม่อยู่)
+//   cal_feed     { from, to, show?, people?, rooms?, courses?, layers?, assigned? }   รายการในปฏิทิน (คาบ งาน/นัดหมาย จองห้อง วันหยุด ไม่อยู่)
+//                show=mine: งาน = ที่มอบให้ฉัน · assigned=true เพิ่ม "งานที่ฉันมอบหมายให้คนอื่น"
 //   cal_settings_save { settings }       จำการตั้งค่าปฏิทิน (show/people/rooms/courses/layers/view)
 //   task_list    { from?, to?, scope?: mine|created|course|all, include_done? }
-//   task_save    { task_id?, title, task_type?, task_date, start_time?, duration_hours?, assignee_id?, is_private?, note?, course_id?, semester_id?, schedule_id? }
+//   task_save    { task_id?, title, task_type?, task_date, start_time?, duration_hours?, assignee_id?, is_private?, note?, place?, course_id?, semester_id?, schedule_id? }
 //   task_status  { task_id, status: todo|done|cancelled, actual_hours? }
 //   task_remove  { task_id }              ("ลบ" = ยกเลิก เก็บประวัติ)
 //   task_generate { course_id, semester_id, from?, to? }   สร้างงานจาก "สิ่งที่ต้องเตรียมต่อบท" ให้คาบของวิชา (ผู้ประสาน)
@@ -34,7 +35,7 @@ const KIND_TH: Record<string, string> = {
   class: 'คาบเรียน', makeup: 'คาบชดเชย', prep: 'เตรียมแล็บ', reading: 'อ่านผล', research: 'วิจัย', project: 'โครงงาน',
   service: 'บริการ', exam: 'สอบ', event: 'กิจกรรม', training: 'อบรม', maintenance: 'ปิดซ่อม',
 };
-const TASK_TH: Record<string, string> = { prep: 'เตรียมแล็บ', supervise: 'คุมแล็บ', reading: 'อ่านผล', cleanup: 'เก็บแล็บ', other: 'งาน' };
+const TASK_TH: Record<string, string> = { prep: 'เตรียมแล็บ', supervise: 'คุมแล็บ', reading: 'อ่านผล', cleanup: 'เก็บแล็บ', other: 'งาน', meeting: 'นัดหมาย/ประชุม' };
 const ROLE_TH: Record<string, string> = {
   course_owner: 'ผู้ประสานหลัก', course_backup: 'ผู้ประสานรอง', instructor: 'ผู้สอน', lab_staff: 'เจ้าหน้าที่ห้องปฏิบัติการ', lab_worker: 'พนักงานจัดแล็บ',
   room_manager: 'ผู้ดูแลห้อง', room_backup: 'ผู้ดูแลห้อง (สำรอง)', room_delegate: 'ผู้แทนดูแลห้อง', cost_viewer: 'ดูต้นทุน',
@@ -230,23 +231,25 @@ async function calFeed(ctx: Ctx, body: any) {
   // ---- งาน ----
   if (layers.has('tasks')) {
     const rows = await all(() => sb.from('tasks')
-      .select('task_id, source, schedule_id, course_id, semester_id, task_type, title, assignee_id, task_date, start_time, duration_hours, status, is_private, note, created_by, done_at, ' +
+      .select('task_id, source, schedule_id, course_id, semester_id, task_type, title, assignee_id, task_date, start_time, duration_hours, status, is_private, note, place, created_by, done_at, ' +
         'courses ( course_code ), schedules ( location_id, locations ( name ) )')
       .gte('task_date', from).lte('task_date', to).neq('status', 'cancelled').order('task_date'));
     for (const t of rows) {
       const mine = t.assignee_id === uid || t.created_by === uid;
       if (t.is_private && !mine) continue;
-      let include = show === 'all' || mine;
+      // ปฏิทินของฉัน: งานที่มอบให้ฉัน · งานที่ฉันมอบหมายให้คนอื่นแสดงเมื่อเปิดตัวกรอง assigned
+      const assignedByMe = t.created_by === uid && t.assignee_id !== uid;
+      let include = show === 'all' || t.assignee_id === uid || (assignedByMe && body.assigned === true);
       if (!include && show === 'selected') include = people.has(t.assignee_id) || (!!t.course_id && courses.has(t.course_id)) || (!!t.schedules?.location_id && rooms.has(t.schedules.location_id));
       if (!include) continue;
       const start = t5(t.start_time);
       items.push({
         id: `t:${t.task_id}`, type: 'task', date: t.task_date, start, end: start && t.duration_hours ? addHours(start, Number(t.duration_hours)) : null,
         title: t.title, sub: t.courses?.course_code ? `${TASK_TH[t.task_type] ?? 'งาน'} · ${t.courses.course_code}` : (TASK_TH[t.task_type] ?? 'งาน'),
-        room: t.schedules?.locations?.name ?? null, location_id: t.schedules?.location_id ?? null, course_id: t.course_id, course_code: t.courses?.course_code ?? null,
-        status: t.status, mine, who: t.assignee_id === uid ? null : nameOf.get(t.assignee_id) ?? null, owner_id: t.assignee_id,
-        flags: [t.is_private ? 'private' : '', t.status === 'done' ? 'done' : '', t.status === 'todo' && t.task_date < today ? 'overdue' : ''].filter(Boolean),
-        ref: { task_id: t.task_id, source: t.source, task_type: t.task_type, schedule_id: t.schedule_id, semester_id: t.semester_id, note: t.note, duration_hours: t.duration_hours, assignee_id: t.assignee_id, created_by: t.created_by, is_private: t.is_private, can_edit: ctx.admin || mine || (!!t.course_id && coordinates(ctx, t.course_id, t.semester_id)) },
+        room: t.place || (t.schedules?.locations?.name ?? null), location_id: t.schedules?.location_id ?? null, course_id: t.course_id, course_code: t.courses?.course_code ?? null,
+        status: t.status, mine: t.assignee_id === uid, who: t.assignee_id === uid ? null : nameOf.get(t.assignee_id) ?? null, owner_id: t.assignee_id,
+        flags: [t.is_private ? 'private' : '', t.status === 'done' ? 'done' : '', t.task_type !== 'meeting' && t.status === 'todo' && t.task_date < today ? 'overdue' : '', assignedByMe ? 'assigned' : '', t.task_type === 'meeting' ? 'meeting' : ''].filter(Boolean),
+        ref: { task_id: t.task_id, source: t.source, task_type: t.task_type, schedule_id: t.schedule_id, semester_id: t.semester_id, note: t.note, place: t.place, duration_hours: t.duration_hours, assignee_id: t.assignee_id, created_by: t.created_by, is_private: t.is_private, can_edit: ctx.admin || mine || (!!t.course_id && coordinates(ctx, t.course_id, t.semester_id)) },
       });
     }
   }
@@ -293,12 +296,13 @@ async function taskList(ctx: Ctx, body: any) {
   const uid = ctx.me.user_id;
   let q = () => {
     let x = sb.from('tasks').select('task_id, source, schedule_id, course_id, semester_id, task_type, title, assignee_id, task_date, start_time, duration_hours, status, actual_hours, ' +
-      'is_private, note, created_by, done_by, done_at, handed_over_from, manually_edited, updated_at, courses ( course_code, course_name ), ' +
+      'is_private, note, place, created_by, done_by, done_at, handed_over_from, manually_edited, updated_at, courses ( course_code, course_name ), ' +
       'schedules ( class_date, start_time, lab_sections ( section_no ), locations ( name ) )')
       .gte('task_date', from).lte('task_date', to).order('task_date').order('start_time', { nullsFirst: true });
     if (!body.include_done) x = x.eq('status', 'todo'); else x = x.neq('status', 'cancelled');
     if (scope === 'mine') x = x.eq('assignee_id', uid);
     if (scope === 'created') x = x.eq('created_by', uid);
+    if (body.todo_only) x = x.neq('task_type', 'meeting'); // แถบ "งานที่ต้องทำ" ไม่นับนัดหมาย
     return x;
   };
   let rows = await all(q, 5000);
@@ -318,7 +322,7 @@ async function taskList(ctx: Ctx, body: any) {
       courses: undefined, schedules: undefined,
       assignee_name: nameOf.get(t.assignee_id) ?? null, created_by_name: nameOf.get(t.created_by) ?? null, done_by_name: t.done_by ? nameOf.get(t.done_by) ?? null : null,
       handed_over_from_name: t.handed_over_from ? nameOf.get(t.handed_over_from) ?? null : null,
-      overdue: t.status === 'todo' && t.task_date < today,
+      overdue: t.task_type !== 'meeting' && t.status === 'todo' && t.task_date < today,
       can_edit: ctx.admin || t.assignee_id === uid || t.created_by === uid || (!!t.course_id && coordinates(ctx, t.course_id, t.semester_id)),
     })),
   };
@@ -359,7 +363,7 @@ async function inbox(ctx: Ctx) {
       .or('status.eq.pending,and(status.eq.approved,pending_change.not.is.null)').gte('ends_at', since).limit(3000),
     sb.from('room_move_requests').select('move_request_id, reservation_id, room_reservations!inner ( requested_by, course_id, semester_id, schedule_id )').eq('status', 'pending'),
     leaveQueue(ctx, { status: 'pending' }),
-    sb.from('tasks').select('task_id, task_date').eq('assignee_id', uid).eq('status', 'todo').lte('task_date', today),
+    sb.from('tasks').select('task_id, task_date').eq('assignee_id', uid).eq('status', 'todo').neq('task_type', 'meeting').lte('task_date', today),
   ]);
   let queue = 0;
   if ((pend ?? []).length) {
@@ -440,6 +444,7 @@ Deno.serve(async (req: Request) => {
           people: ids(s.people), rooms: ids(s.rooms), courses: ids(s.courses),
           layers: (Array.isArray(s.layers) ? s.layers : LAYERS).filter((l: string) => LAYERS.includes(l)),
           view: ['week', 'month', 'agenda', 'day'].includes(s.view) ? s.view : 'week',
+          assigned: s.assigned !== false, show_done: s.show_done !== false,
         };
         const { error } = await sb.from('users').update({ calendar_settings: clean }).eq('user_id', uid);
         if (error) throw error;
@@ -451,7 +456,7 @@ Deno.serve(async (req: Request) => {
 
       case 'task_save': {
         const p: Record<string, unknown> = {};
-        for (const k of ['title', 'task_type', 'task_date', 'start_time', 'duration_hours', 'assignee_id', 'is_private', 'note', 'course_id', 'semester_id', 'schedule_id']) if (k in body) p[k] = body[k];
+        for (const k of ['title', 'task_type', 'task_date', 'start_time', 'duration_hours', 'assignee_id', 'is_private', 'note', 'place', 'course_id', 'semester_id', 'schedule_id']) if (k in body) p[k] = body[k];
         if (p.task_date && !DATE.test(String(p.task_date))) return fail('BAD_REQUEST', 'วันที่ไม่ถูกต้อง', 400);
         if (p.start_time && !TIME.test(String(p.start_time))) return fail('BAD_REQUEST', 'เวลาไม่ถูกต้อง (HH:MM)', 400);
         if (p.task_type && !TASK_TH[String(p.task_type)]) return fail('BAD_REQUEST', 'ประเภทงานไม่ถูกต้อง', 400);
