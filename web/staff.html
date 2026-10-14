@@ -414,7 +414,11 @@
       <button class="chip on" data-f="all">ทั้งหมด</button>
       <button class="chip" data-f="live">กำลังเรียน/ถัดไป</button>
       <button class="chip" data-f="mine" id="dayMineChip">วิชาของฉัน</button>
+      <span class="spacer"></span>
+      <button class="chip" data-v="list">รายวิชา</button>
+      <button class="chip" data-v="grid">ตารางทั้งวัน</button>
     </div>
+    <div id="dayGrid" hidden></div>
     <div id="dayList"></div>
     <div class="err" id="dayErr"></div>
   </section>
@@ -749,16 +753,19 @@ $('dayPrev').onclick = () => go(`#day/${addDays(dayDate, -1)}`);
 $('dayNext').onclick = () => go(`#day/${addDays(dayDate, 1)}`);
 $('dayChips').addEventListener('click', (e) => {
   const b = e.target.closest('.chip'); if (!b) return;
-  dayFilter = b.dataset.f;
-  $('dayChips').querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === b));
+  if (b.dataset.v) { dayView = b.dataset.v; try { localStorage.setItem('cph_dayview', dayView); } catch { /* ไม่มี storage */ } }
+  else { dayFilter = b.dataset.f; $('dayChips').querySelectorAll('.chip[data-f]').forEach((c) => c.classList.toggle('on', c === b)); }
   renderDay();
 });
+// มุมมองหน้า "คาบทั้งหมดของวัน": รายวิชา (เดิม) หรือ ตารางทั้งวัน (ห้อง × เวลา)
+let dayView = 'list', dayGridAll = false;
+try { dayView = localStorage.getItem('cph_dayview') === 'grid' ? 'grid' : 'list'; } catch { /* ไม่มี storage */ }
 
 async function openDay(date, silent = false) {
   if (!silent) {
     show('viewDay'); dayDate = date; $('dayErr').textContent = '';
     $('dayTitle').textContent = innerWidth < 640 ? thDayShort(date) : thDay(date);
-    if (dayData?.date !== date) { $('dayList').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('dayTiles').innerHTML = ''; expanded = new Set(); }
+    if (dayData?.date !== date) { $('dayList').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('dayGrid').innerHTML = '<div class="muted">กำลังโหลด…</div>'; $('dayTiles').innerHTML = ''; expanded = new Set(); }
     if (date === bkkToday() && dayFilter === 'all') { /* วันนี้: คงตัวกรองเดิม */ }
   }
   try {
@@ -784,12 +791,22 @@ function renderDay() {
   const all = dayData.sessions.filter((s) => (!mineOnly || s.mine) && s.phase !== 'cancelled');
   const courses = new Set(all.map((s) => s.course_code));
   const started = all.filter((s) => s.phase !== 'upcoming');
+  // นับ "สะสมทุกคาบ" = คนเดียวเรียน 2 คาบนับ 2 ครั้ง · "ไม่ซ้ำคน" = นับคนละครั้ง (ใช้ roster/came จาก API)
   const exp = started.reduce((a, s) => a + s.total, 0), came = started.reduce((a, s) => a + s.present + s.late, 0);
   const live = all.filter((s) => s.phase === 'live').length;
+  const R = dayData.roster, C = dayData.came;
+  const uniq = R ? new Set(all.flatMap((s) => R[s.section_id] || [])).size : null;
+  const uniqCame = C ? new Set(all.flatMap((s) => C[s.schedule_id] || [])).size : null;
   $('dayTiles').innerHTML = [
-    ['วิชา', courses.size, 'var(--ink)'], ['คาบ', all.length, 'var(--ink)'], ['กำลังเรียน', live, 'var(--teal-dark)'],
-    ['นักศึกษา (คาบที่เริ่มแล้ว)', exp, 'var(--ink)'], ['เข้าเรียนแล้ว', came, 'var(--teal-dark)'], ['อัตรา', exp ? `${Math.round((came / exp) * 100)}%` : '–', 'var(--ink)'],
-  ].map(([l, n, col]) => `<div class="tile"><b style="color:${col}">${n}</b><span>${l}</span></div>`).join('');
+    ['วิชา', courses.size, 'var(--ink)', ''], ['คาบ', all.length, 'var(--ink)', ''], ['กำลังเรียน', live, 'var(--teal-dark)', ''],
+    ['นักศึกษา (ไม่ซ้ำคน)' + (uniqCame != null ? ` · มาแล้ว ${uniqCame}` : ''), uniq ?? '–', 'var(--ink)', 'จำนวนนักศึกษาที่มีแล็บวันนี้ คนที่เรียนหลายคาบนับครั้งเดียว'],
+    ['ที่ต้องเช็ก (สะสมทุกคาบ)', exp, 'var(--ink)', 'รวมรายชื่อของทุกคาบที่เริ่มแล้ว — คนที่เรียน 2 คาบนับ 2 ครั้ง'],
+    [`เข้าเรียนแล้ว (สะสม)${exp ? ` · ${Math.round((came / exp) * 100)}%` : ''}`, came, 'var(--teal-dark)', 'มา + สาย ของทุกคาบที่เริ่มแล้ว (นับตามคาบ)'],
+  ].map(([l, n, col, tip]) => `<div class="tile"${tip ? ` title="${esc(tip)}"` : ''}><b style="color:${col}">${n}</b><span>${l}</span></div>`).join('');
+
+  $('dayChips').querySelectorAll('.chip[data-v]').forEach((c) => c.classList.toggle('on', c.dataset.v === dayView));
+  $('dayGrid').hidden = dayView !== 'grid'; $('dayList').hidden = dayView === 'grid';
+  if (dayView === 'grid') return renderDayGrid(list);
 
   if (!list.length) {
     $('dayList').innerHTML = `<div class="card muted">${dayData.sessions.length ? 'ไม่มีคาบตามตัวกรองนี้' : 'ไม่มีแล็บในวันนี้'}</div>`;
@@ -832,6 +849,47 @@ function renderDay() {
   $('dayList').querySelectorAll('.showall').forEach((b) => b.addEventListener('click', () => {
     expanded.has(b.dataset.code) ? expanded.delete(b.dataset.code) : expanded.add(b.dataset.code); renderDay();
   }));
+}
+
+// ตารางทั้งวัน: แถว = ห้อง · เวลาอยู่ด้านบน (ใช้สไตล์ .hg ชุดเดียวกับตารางห้องใน lib/work.css)
+function renderDayGrid(list) {
+  const el = $('dayGrid');
+  if (!list.length) { el.innerHTML = `<div class="card muted">${dayData.sessions.length ? 'ไม่มีคาบตามตัวกรองนี้' : 'ไม่มีแล็บในวันนี้'}</div>`; return; }
+  const mins = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+  const its = list.map((s) => ({ s, a: mins(s.start_time), b: Math.max(mins(s.end_time), mins(s.start_time) + 1) }));
+  const h0 = dayGridAll ? 0 : 7, h1 = dayGridAll ? 24 : 19, span = (h1 - h0) * 60;
+  const out = dayGridAll ? 0 : its.filter((x) => x.b <= h0 * 60 || x.a >= h1 * 60).length;
+  const P = (m) => ((Math.min(Math.max(m, h0 * 60), h1 * 60) - h0 * 60) / span) * 100;
+  const step = span > 14 * 60 ? 2 : 1, ticks = [];
+  for (let h = h0; h <= h1; h += step) ticks.push(h);
+  const LANE = innerWidth < 640 ? 36 : 42;
+  const rooms = new Map();
+  for (const x of its) { if (!rooms.has(x.s.room)) rooms.set(x.s.room, []); rooms.get(x.s.room).push(x); }
+  const nowM = (() => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).split(':'); return Number(p[0]) * 60 + Number(p[1]); })();
+  const isToday = dayData.date === bkkToday();
+  const body = [...rooms.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'th')).map(([room, xs]) => {
+    const vis = xs.filter((x) => x.b > h0 * 60 && x.a < h1 * 60).sort((p, q) => p.a - q.a || q.b - p.b);
+    const lanes = [];
+    for (const x of vis) { let k = lanes.findIndex((e) => e <= x.a); if (k < 0) { k = lanes.length; lanes.push(x.b); } else lanes[k] = x.b; x.lane = k; }
+    const bars = vis.map((x) => {
+      const s = x.s, col = courseColor(s.course_code), l = P(x.a), w = Math.max(P(x.b) - l, 0.8);
+      const ph = PHASE[s.phase] || PHASE.done;
+      const line = s.phase === 'cancelled' ? 'ยกเลิก' : s.phase === 'upcoming' ? `${s.total} คน · ${ph.label}` : `มา ${s.present + s.late}/${s.total}${s.phase === 'live' ? ' · กำลังเรียน' : ''}`;
+      const tip = `${s.course_code} กลุ่ม ${s.section_no} · ${s.start_time}–${s.end_time} · ${s.room}\n${s.course_name}${s.instructor_name ? `\n${s.instructor_name}` : ''}\n${line}`;
+      return `<button class="hg-bar ${s.phase === 'cancelled' ? 'cancel' : ''} ${s.mine ? 'mine' : ''}" data-id="${esc(s.schedule_id)}" title="${esc(tip)}"
+        style="left:${l}%;width:calc(${w}% - 2px);top:${x.lane * LANE + 3}px;height:${LANE - 6}px;--c:${col};--bg:${col}14;${s.phase === 'live' ? 'box-shadow:0 0 0 2px var(--teal);' : ''}"><b>${esc(s.course_code)}-${esc(s.section_no)}</b><span>${esc(line)}</span></button>`;
+    }).join('');
+    const grid = ticks.map((h) => `<i style="left:${((h - h0) * 60 / span) * 100}%"></i>`).join('');
+    const now = isToday && nowM > h0 * 60 && nowM < h1 * 60 ? `<div class="hg-now" style="left:${P(nowM)}%"></div>` : '';
+    return `<div class="hg-label"><b>${esc(room || '—')}</b><small>${xs.length} คาบ</small></div>
+      <div class="hg-track" style="height:${Math.max(1, lanes.length) * LANE}px;cursor:default">${grid}${bars}${now}</div>`;
+  }).join('');
+  const head = `<div class="hg-corner"></div><div class="hg-ticks">${ticks.map((h) => `<span style="left:${((h - h0) * 60 / span) * 100}%">${String(h).padStart(2, '0')}${innerWidth < 640 ? '' : ':00'}</span>`).join('')}</div>`;
+  el.innerHTML = (out ? `<button class="hg-out" data-all>⚠ มีคาบนอกช่วง 07–19 น. อีก ${out} คาบ — กดเพื่อดูครบ 24 ชม.</button>` : '')
+    + (dayGridAll ? '<button class="hg-out back" data-all>กำลังดูครบ 24 ชม. — กลับช่วง 07–19 น.</button>' : '')
+    + `<div class="hg">${head}${body}</div><div class="muted" style="margin-top:6px">กดแถบคาบเพื่อดูรายชื่อ · กรอบเหลือง = วิชาของฉัน · ขอบเขียว = กำลังเรียน</div>`;
+  el.querySelectorAll('[data-all]').forEach((b) => b.addEventListener('click', () => { dayGridAll = !dayGridAll; renderDay(); }));
+  el.querySelectorAll('.hg-bar[data-id]').forEach((b) => b.addEventListener('click', () => go(`#s/${b.dataset.id}`)));
 }
 
 function sessState(s) {

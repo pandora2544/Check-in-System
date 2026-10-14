@@ -160,7 +160,21 @@ Deno.serve(async (req: Request) => {
             topic_seq: r.topic_seq ?? null, topic_title: r.topic_title ?? null,
           };
         });
-        return json({ data: { date, sessions } });
+        // นับนักศึกษา "ไม่ซ้ำคน" (คนเดียวเรียนหลายคาบในวันเดียวกันนับครั้งเดียว) — ส่งรายชื่อย่อให้หน้าเว็บกรองตาม "วิชาของฉัน" เองได้
+        // roster: section_id → [ลำดับคน] · came: schedule_id → [ลำดับคนที่มา/สาย] (ใช้ลำดับแทน uuid ให้ข้อมูลเล็ก)
+        const live = rows.filter((r) => r.status !== 'cancelled');
+        const secIds = [...new Set(live.map((r) => r.section_id))], schIds = live.map((r) => r.schedule_id);
+        const idx = new Map<string, number>(), ix = (id: string) => { if (!idx.has(id)) idx.set(id, idx.size); return idx.get(id)!; };
+        const roster: Record<string, number[]> = {}, came: Record<string, number[]> = {};
+        if (secIds.length) {
+          const [{ data: enr }, { data: att }] = await Promise.all([
+            supabase.from('section_enrollments').select('section_id, student_id').in('section_id', secIds),
+            supabase.from('attendance_records').select('schedule_id, student_id').in('schedule_id', schIds).in('status', ['present', 'late']),
+          ]);
+          for (const e of enr ?? []) (roster[e.section_id] ??= []).push(ix(e.student_id));
+          for (const a of att ?? []) (came[a.schedule_id] ??= []).push(ix(a.student_id));
+        }
+        return json({ data: { date, sessions, roster, came } });
       }
 
       case 'session': {
