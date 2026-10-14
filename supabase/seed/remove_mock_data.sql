@@ -3,6 +3,16 @@ delete from public.notification_logs where schedule_id in (select schedule_id fr
 delete from public.attendance_records where schedule_id in (select schedule_id from public.schedules where booking_id::text like '90000000-%');
 delete from public.face_templates where student_id::text like 'b0000000-%';
 delete from public.schedules where booking_id::text like '90000000-%';
+-- คาบของกลุ่มทดสอบทั้งหมด (ชุดสมจริง realistic_mock.sql) + ข้อมูลที่ผูกกับคาบ
+delete from public.leave_requests where schedule_id in (select schedule_id from public.schedules where section_id::text like 'e0000000-%');
+delete from public.tasks where schedule_id in (select schedule_id from public.schedules where section_id::text like 'e0000000-%');
+delete from public.tasks where note = 'ข้อมูลทดสอบ' and created_by::text like 'a0000000-%';
+update public.room_items set schedule_id = null where schedule_id in (select schedule_id from public.schedules where section_id::text like 'e0000000-%');
+update public.room_items set reuse_schedule_id = null where reuse_schedule_id in (select schedule_id from public.schedules where section_id::text like 'e0000000-%');
+delete from public.notification_logs where schedule_id in (select schedule_id from public.schedules where section_id::text like 'e0000000-%');
+delete from public.attendance_records where schedule_id in (select schedule_id from public.schedules where section_id::text like 'e0000000-%');
+delete from public.schedules where section_id::text like 'e0000000-%';
+delete from public.room_reservations where requested_by::text like 'a0000000-%' or location_id::text like 'f0000000-%';
 delete from public.room_bookings where booking_id::text like '90000000-%';
 delete from public.telegram_channels where section_id::text like 'e0000000-%';
 delete from public.section_enrollments where section_id::text like 'e0000000-%';
