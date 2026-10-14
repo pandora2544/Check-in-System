@@ -168,6 +168,8 @@ Deno.serve(async (req: Request) => {
         const end = addDay(date, days);
         let rq = sb.from('locations').select('location_id, name, room_code, building, floor, zone_id, setup_minutes, teardown_minutes, room_status, note, zones ( name, building, floor, sort_order )').order('name');
         if (body.zone_id) rq = rq.eq('zone_id', body.zone_id);
+        // ห้องระบบ/ทดสอบ (รหัสขึ้นต้น T0-) ไม่แสดงในปฏิทินห้อง — มีคาบทุกชั่วโมงจนรก (ส่ง include_system: true ถ้าต้องการ)
+        if (!body.include_system) rq = rq.or('room_code.is.null,room_code.not.like.T0-*');
         const [{ data: rooms }, { data: zones }] = await Promise.all([rq, sb.from('zones').select('*').order('sort_order').order('name')]);
         const locIds = (rooms ?? []).map((r: any) => r.location_id);
         const [{ data: resv }, contacts, idx] = await Promise.all([
